@@ -1,0 +1,6 @@
+* @qplanck-labs/maintainers
+
+/src/qplanck/simulator.py @qplanck-labs/simulation
+/src/qplanck/qasm3.py @qplanck-labs/interop
+/src/qplanck/qiskit_adapter.py @qplanck-labs/interop
+/docs/ @qplanck-labs/docs
