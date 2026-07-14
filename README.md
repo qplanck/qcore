@@ -79,11 +79,18 @@ narrow:
 - trace snapshots default to circuits with at most 8 qubits
 - Qiskit interop is optional and covers the same supported gate subset
 
-PennyLane, browser visualisation, native acceleration, GPU backends, and plugin
-entry points are planned after the first alpha slice.
+The production package remains the audited v0.1 prototype. Phase 0 adds research,
+architecture, RFCs, and delivery gates only; proposed compiler/runtime APIs are
+not implemented yet. Provider integrations, native acceleration, GPU backends,
+and hosted infrastructure remain explicitly deferred.
 
 ## Documentation
 
+- [Phase 0 documentation index](docs/index.md)
+- [Executive summary](docs/executive-summary.md)
+- [Phase 0 milestone review](docs/reviews/phase-0-review.md)
+- [Ecosystem audit](docs/research/ecosystem-audit.md)
+- [Proposed RFCs](rfcs/0001-qcore-charter.md)
 - [Architecture](docs/architecture.md)
 - [Interop](docs/interop.md)
 - [Contributing](CONTRIBUTING.md)
