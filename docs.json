@@ -1,0 +1,92 @@
+{
+  "$schema": "https://mintlify.com/docs.json",
+  "theme": "linden",
+  "name": "QCore",
+  "description": "QCore by QPlanck Labs — quantum circuit development, debugging, simulation, and interoperability.",
+  "colors": {
+    "primary": "#E3000B",
+    "light": "#FF3340",
+    "dark": "#B80009"
+  },
+  "navigation": {
+    "groups": [
+      {
+        "group": "Start here",
+        "pages": [
+          "docs/index",
+          "docs/executive-summary",
+          "docs/reviews/phase-0-review"
+        ]
+      },
+      {
+        "group": "Architecture",
+        "pages": [
+          "docs/architecture/qcore-overview",
+          "docs/architecture/ir-strategy",
+          "docs/architecture/compiler-pipeline",
+          "docs/architecture/runtime-and-backends",
+          "docs/architecture/plugin-system",
+          "docs/architecture/ai-agent-architecture",
+          "docs/architecture/qplanck-labs",
+          "docs/architecture",
+          "docs/interop"
+        ]
+      },
+      {
+        "group": "Research",
+        "pages": [
+          "docs/research/current-alpha-audit",
+          "docs/research/ecosystem-audit",
+          "docs/research/qbraid-analysis",
+          "docs/research/competitive-matrix",
+          "docs/research/source-register"
+        ]
+      },
+      {
+        "group": "Strategy and delivery",
+        "pages": [
+          "docs/strategy/qcore-positioning",
+          "docs/roadmap/mvp-definition",
+          "docs/roadmap/implementation-backlog",
+          "docs/roadmap/qcore-roadmap"
+        ]
+      },
+      {
+        "group": "RFCs",
+        "pages": [
+          "rfcs/0001-qcore-charter",
+          "rfcs/0002-language-and-repository-strategy",
+          "rfcs/0003-intermediate-representation",
+          "rfcs/0004-backend-interface"
+        ]
+      },
+      {
+        "group": "Project",
+        "pages": [
+          "docs/governance/open-source-governance",
+          "docs/security/threat-model"
+        ]
+      }
+    ]
+  },
+  "navbar": {
+    "links": [
+      {
+        "type": "github",
+        "href": "https://github.com/qplanck/qcore"
+      }
+    ],
+    "primary": {
+      "type": "github",
+      "href": "https://github.com/qplanck/qcore"
+    }
+  },
+  "contextual": {
+    "options": [
+      "copy",
+      "chatgpt",
+      "claude",
+      "mcp"
+    ]
+  }
+}
