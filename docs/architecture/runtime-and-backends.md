@@ -374,16 +374,33 @@ for event in compiled.trace.events:
     print(event.pass_id, event.metrics_before, event.metrics_after)
 ```
 
-### Pulse experiment: future separate program type
+### Pulse experiment: implemented local schema, future provider adapter
 
 ```python
-pulse_program = PulseProgram(target=backend.target)
-pulse_program.play(channel="drive:q0", waveform=Gaussian(...))
-pulse_program.acquire(qubit=0, memory_slot=0)
+from qplanck.pulse import (
+    AcquireChannel,
+    DriveChannel,
+    GaussianWaveform,
+    PulseProgram,
+    PulseTarget,
+)
+
+drive = DriveChannel(0)
+acquire = AcquireChannel(0)
+target = PulseTarget(channels=frozenset({drive, acquire}))
+
+pulse_program = (
+    PulseProgram(name="experiment")
+    .play(0, drive, GaussianWaveform(duration=160, sigma=40.0, amplitude=0.25))
+    .acquire(160, acquire, duration=160, memory_slot=0)
+)
+pulse_program.validate(target)
 ```
 
-Pulse programs require calibration/timing ownership and are not lowered from
-CircuitIR until a separate RFC is accepted.
+The local schedule/target/calibration contracts are implemented in `0.2.0a1`.
+Provider channel mapping, calibration/timing ownership, OpenPulse lowering, and
+hardware execution remain future adapter responsibilities. Pulse programs are
+not implicitly lowered from `CircuitIR`.
 
 ## Verification
 

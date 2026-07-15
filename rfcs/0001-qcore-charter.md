@@ -1,5 +1,10 @@
 # RFC 0001: QCore Charter
 
+> Implementation note (`0.2.0a1`): QCore now includes an experimental local
+> pulse/calibration *representation*. Pulse hardware control, provider drivers,
+> credentials, and job submission remain non-goals, so this does not broaden the
+> runtime scope described below.
+
 - Status: **Proposed**
 - Date: 2026-07-14
 - Decision owners: Unassigned pending Phase 0 review

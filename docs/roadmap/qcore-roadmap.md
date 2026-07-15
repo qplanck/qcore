@@ -1,5 +1,11 @@
 # QCore Roadmap
 
+**Implementation update (`0.2.0a1`):** a bounded QIR base-profile exporter and
+provider-neutral pulse/calibration model were pulled forward as experimental
+representation boundaries. This does not pull forward a QIR runtime, provider
+execution, OpenPulse conformance, or native compiler. See the
+[current standards contract](../sdk-standards.md).
+
 > Status: Proposed  
 > Planning horizon: Phase 0 through three years
 

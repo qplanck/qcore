@@ -1,10 +1,17 @@
 # QCore Documentation
 
-> Status: Phase 0 research and architecture gate  
+> Status: `qplanck 0.2.0a1` implementation and release preparation
 > Evidence cut-off: 2026-07-14
 
-QCore is the product brand. The audited alpha is distributed and imported as
-`qplanck`. Any future `qcore` import or CLI is **Proposed**, not implemented.
+QCore is the product brand. The SDK is distributed and imported as `qplanck`.
+Any future `qcore` import or CLI is **Proposed**, not implemented because that
+name is owned by an unrelated distribution.
+
+The current alpha includes a deterministic graph-based compiler foundation,
+loss-aware OpenQASM/Qiskit exchange, an experimental QIR base-profile export
+boundary, and an experimental hardware-neutral pulse/calibration model. Read the
+[SDK standards and capability contract](sdk-standards.md) before making feature
+or performance claims.
 
 ## Evidence labels
 
@@ -19,12 +26,12 @@ Re-check time-sensitive facts before implementation or publication.
 
 ## Start here
 
-1. [Executive summary](executive-summary.md)
-2. [Phase 0 milestone review](reviews/phase-0-review.md)
-3. [QCore positioning](strategy/qcore-positioning.md)
-4. [System overview](architecture/qcore-overview.md)
-5. [MVP definition](roadmap/mvp-definition.md)
-6. [Implementation backlog](roadmap/implementation-backlog.md)
+1. [SDK standards and capability contract](sdk-standards.md)
+2. [Current interoperability contract](interop.md)
+3. [Prototype architecture](architecture.md)
+4. [Publishing guide](publishing.md)
+5. [Executive summary](executive-summary.md)
+6. [Phase 0 milestone review](reviews/phase-0-review.md)
 
 ## Research
 
@@ -46,6 +53,7 @@ Re-check time-sensitive facts before implementation or publication.
 - [QPlanck Labs](architecture/qplanck-labs.md)
 - [Open-source governance](governance/open-source-governance.md)
 - [Threat model](security/threat-model.md)
+- [SDK standards and capability contract](sdk-standards.md)
 
 ## Delivery
 
@@ -53,6 +61,7 @@ Re-check time-sensitive facts before implementation or publication.
 - [MVP definition](roadmap/mvp-definition.md)
 - [Implementation backlog](roadmap/implementation-backlog.md)
 - [Phase 0 milestone review](reviews/phase-0-review.md)
+- [PyPI publishing guide](publishing.md)
 
 ## Proposed RFCs
 

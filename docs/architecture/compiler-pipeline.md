@@ -1,5 +1,12 @@
 # Compiler Pipeline
 
+**Implementation update (`0.2.0a1`):** the reference compiler now implements an
+immutable dependency graph, validation, O0/O1 pipelines, exact self-inverse
+cancellation, numeric rotation merging, resource metrics, IR identities, and
+deterministic compilation events. Placement, routing/SWAP insertion,
+decomposition, scheduling, target lowering, and native acceleration remain
+future work. See the [current architecture](../architecture.md).
+
 > Status: Proposed  
 > Evidence basis: Qiskit, pytket, LLVM/MLIR, Catalyst, CUDA-Q, and PyZX sources in
 > the [source register](../research/source-register.md)

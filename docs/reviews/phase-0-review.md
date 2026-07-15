@@ -1,5 +1,10 @@
 # Phase 0 Milestone Review
 
+**Historical note:** this review records the pre-implementation Phase 0 baseline
+at commit `2f2ed07`. It is intentionally not a description of the current SDK.
+See the [current standards contract](../sdk-standards.md) for implemented
+`0.2.0a1` capabilities and limits.
+
 > Milestone: Research and Architecture Gate  
 > Review status: **Ready for human review; not accepted**  
 > Evidence cut-off: 2026-07-14  

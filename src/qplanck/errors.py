@@ -10,7 +10,7 @@ class CircuitError(QPlanckError):
 
 
 class UnsupportedOperationError(CircuitError):
-    """Raised when an operation is outside the v0.1 supported subset."""
+    """Raised when an operation is outside the supported static circuit subset."""
 
 
 class QASMError(QPlanckError):
@@ -19,3 +19,7 @@ class QASMError(QPlanckError):
 
 class InteropError(QPlanckError):
     """Raised when a framework adapter cannot convert an object."""
+
+
+class ResourceLimitError(QPlanckError):
+    """Raised before an operation would exceed an explicit local resource budget."""

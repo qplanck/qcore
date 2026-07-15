@@ -4,7 +4,7 @@ description: "A map of QPlanck's current divisions and how this documentation wi
 icon: "sitemap"
 ---
 
-# QPlanck divisions
+## QPlanck divisions
 
 The documentation is organized by division so that each part of QPlanck can
 develop a clear identity without losing its connection to the wider mission.

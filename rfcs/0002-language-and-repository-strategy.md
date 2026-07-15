@@ -1,5 +1,9 @@
 # RFC 0002: Language, Repository, and Naming Strategy
 
+> Implementation note (`0.2.0a1`): the compiler now derives an immutable
+> dependency graph and executes deterministic exact Python passes. No native
+> module has been added; the benchmark and packaging gate below still applies.
+
 - Status: **Proposed**
 - Date: 2026-07-14
 - Decision owners: Unassigned pending Phase 0 review

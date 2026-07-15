@@ -1,4 +1,5 @@
 import json
+import math
 from dataclasses import FrozenInstanceError
 
 import pytest
@@ -42,3 +43,11 @@ def test_parameter_round_trip() -> None:
 def test_ir_rejects_out_of_range_qubits() -> None:
     with pytest.raises(CircuitError):
         CircuitIR(1, operations=(Operation("h", (1,)),))
+
+
+@pytest.mark.parametrize("value", [math.nan, math.inf, -math.inf])
+def test_ir_rejects_non_finite_numeric_values(value: float) -> None:
+    with pytest.raises(CircuitError, match="finite"):
+        Operation("rx", (0,), (value,))
+    with pytest.raises(CircuitError, match="finite"):
+        Parameter("theta", value)

@@ -1,0 +1,11 @@
+include CHANGELOG.md
+include CODE_OF_CONDUCT.md
+include CONTRIBUTING.md
+include DCO.md
+include SECURITY.md
+include docs.json
+recursive-include docs *.md
+recursive-include examples *.py *.qasm
+recursive-include qplanck *.md
+recursive-include rfcs *.md
+recursive-include tph *.md
