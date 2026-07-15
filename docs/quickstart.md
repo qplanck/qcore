@@ -10,9 +10,13 @@ This guide walks you through installing QCore, running your first circuit on the
 built-in simulator, and using the `qplanck` command-line interface.
 
 QCore is distributed on PyPI as the [`qplanck`](https://pypi.org/project/qplanck)
-package. QCore v0.1 ships a small, deterministic surface: a Python circuit API,
-a NumPy statevector simulator, ASCII drawing, portable execution traces, and an
-[OpenQASM 3 and optional Qiskit interop](/docs/interop) layer.
+package. The current `0.2.0a1` alpha ships a deterministic surface: a Python
+circuit API, a bounded NumPy statevector simulator, ASCII drawing, portable
+execution traces, a graph-based reference compiler, loss-aware
+[OpenQASM 3 and optional Qiskit interop](/docs/interop), an experimental QIR
+Base Profile export, and an experimental hardware-neutral pulse schema. See the
+[SDK standards and capability contract](/docs/sdk-standards) for the full
+matrix and its limits.
 
 ## Prerequisites
 
@@ -40,9 +44,11 @@ qplanck doctor
 ```
 
 `qplanck doctor` prints the installed `qplanck` version, the Python and NumPy
-versions in use, whether Qiskit is available, and the sampled counts and trace
-status of a two-qubit Bell circuit. Use it whenever you need to confirm that
-QCore is wired up correctly in a new environment.
+versions in use, whether Qiskit is available, the sampled counts and trace
+status of a two-qubit Bell circuit, and the compiler pipeline id, QIR
+profile/version, and pulse schema version exercised by the smoke test. Use it
+whenever you need to confirm that QCore is wired up correctly in a new
+environment.
 
 ## Simulate a Bell state
 
@@ -71,8 +77,9 @@ Key points:
 - `trace=True` records a step-by-step execution trace on `result.trace`. Traces
   default to circuits with at most eight qubits.
 
-The v0.1 gate set is `h`, `x`, `y`, `z`, `s`, `t`, `rx`, `ry`, `rz`, `cx`, and
-`cz`. Only terminal measurements are supported, one qubit to one classical bit.
+The supported gate set is `h`, `x`, `y`, `z`, `s`, `t`, `rx`, `ry`, `rz`, `cx`,
+and `cz`. Parameters must be finite numeric values, and only terminal
+measurements are supported, one qubit to one classical bit.
 
 ## Draw and export from the CLI
 
@@ -108,14 +115,32 @@ restored = Circuit.from_qasm3(qasm)
 ```
 
 Unsupported operations, multiple registers, non-numeric parameters, and
-non-terminal measurements raise an error at import time. See
-[Interop](/docs/interop) for the full supported shape and the optional Qiskit
-adapter.
+non-terminal measurements raise an error at import time.
+
+When round-trip fidelity matters, use the evidence-bearing form. It returns a
+`ConversionResult` whose `report` records preserved fields, warnings, and
+losses:
+
+```python
+from qplanck import Circuit
+
+circuit = Circuit(2, name="bell").h(0).cx(0, 1).measure_all()
+exported = circuit.to_qasm3_with_report()
+
+print(exported.value)
+print(exported.report.to_json(indent=2))
+```
+
+See [Interoperability](/docs/interop) for the full supported shape, the optional
+Qiskit adapter, and the experimental QIR Base Profile export.
 
 ## Next steps
 
-- [Interop](/docs/interop) — supported OpenQASM 3 and Qiskit subsets.
+- [SDK standards and capability contract](/docs/sdk-standards) — capability
+  levels for the compiler, interop, QIR, and pulse layers.
+- [Interoperability](/docs/interop) — supported OpenQASM 3, Qiskit, and QIR
+  subsets and their loss reports.
 - [QCore system overview](/docs/architecture/qcore-overview) — how the circuit,
-  IR, simulator, and trace layers fit together.
-- [MVP definition](/docs/roadmap/mvp-definition) — what is in and out of scope
-  for the v0.1 audited alpha.
+  IR, compiler, simulator, and trace layers fit together.
+- [Publishing `qplanck`](/docs/publishing) — release policy and trusted
+  publishing workflow.
