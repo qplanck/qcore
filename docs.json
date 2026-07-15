@@ -1,8 +1,8 @@
 {
   "$schema": "https://mintlify.com/docs.json",
   "theme": "linden",
-  "name": "QCore",
-  "description": "QCore by QPlanck Labs — quantum circuit development, debugging, simulation, and interoperability.",
+  "name": "QPlanck Documentation",
+  "description": "The documentation hub for QPlanck, QCore, QPlanck Labs, The Planck Horizon, and future QPlanck divisions.",
   "colors": {
     "primary": "#E3000B",
     "light": "#FF3340",
@@ -11,11 +11,20 @@
   "navigation": {
     "groups": [
       {
-        "group": "Start here",
+        "group": "QPlanck",
+        "pages": [
+          "index",
+          "qplanck/overview",
+          "qplanck/divisions"
+        ]
+      },
+      {
+        "group": "QCore",
         "pages": [
           "docs/index",
           "docs/executive-summary",
-          "docs/reviews/phase-0-review"
+          "docs/reviews/phase-0-review",
+          "docs/strategy/qcore-positioning"
         ]
       },
       {
@@ -27,7 +36,6 @@
           "docs/architecture/runtime-and-backends",
           "docs/architecture/plugin-system",
           "docs/architecture/ai-agent-architecture",
-          "docs/architecture/qplanck-labs",
           "docs/architecture",
           "docs/interop"
         ]
@@ -43,9 +51,20 @@
         ]
       },
       {
-        "group": "Strategy and delivery",
+        "group": "QPlanck Labs",
         "pages": [
-          "docs/strategy/qcore-positioning",
+          "docs/architecture/qplanck-labs"
+        ]
+      },
+      {
+        "group": "The Planck Horizon",
+        "pages": [
+          "tph/overview"
+        ]
+      },
+      {
+        "group": "QCore delivery",
+        "pages": [
           "docs/roadmap/mvp-definition",
           "docs/roadmap/implementation-backlog",
           "docs/roadmap/qcore-roadmap"
@@ -79,6 +98,11 @@
     "primary": {
       "type": "github",
       "href": "https://github.com/qplanck/qcore"
+    }
+  },
+  "footer": {
+    "socials": {
+      "github": "https://github.com/qplanck/qcore"
     }
   },
   "contextual": {
