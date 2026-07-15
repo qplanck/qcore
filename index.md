@@ -4,7 +4,7 @@ description: "The central knowledge hub for QPlanck, its products, research init
 icon: "atom"
 ---
 
-# QPlanck Documentation
+## QPlanck Documentation
 
 QPlanck is building an ecosystem for understanding and advancing quantum
 technology. This documentation is the shared source of truth for that ecosystem:
@@ -26,11 +26,11 @@ set of standards.
 
 ## Where to begin
 
-- Read [What is QPlanck?](/qplanck/overview) for the organization-level view.
-- Browse [QPlanck divisions](/qplanck/divisions) to understand how the pieces fit
+- Read [What is QPlanck?](qplanck/overview.md) for the organization-level view.
+- Browse [QPlanck divisions](qplanck/divisions.md) to understand how the pieces fit
   together.
-- Open the [QCore documentation](/docs/index) for the current software framework.
-- Learn about [The Planck Horizon](/tph/overview) for QPlanck's publishing arm.
+- Open the [QCore documentation](docs/index.md) for the current software framework.
+- Learn about [The Planck Horizon](tph/overview.md) for QPlanck's publishing arm.
 
 <Note>
 QCore is in active early-alpha development. The documentation distinguishes

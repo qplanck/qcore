@@ -9,7 +9,7 @@ from qplanck.ir import Operation, Parameter
 
 def _format_param(value: float | Parameter) -> str:
     if isinstance(value, Parameter):
-        raise UnsupportedOperationError("QCore v0.1 supports numeric gate parameters only.")
+        raise UnsupportedOperationError("QCore drawing supports numeric gate parameters only.")
     return f"{value:.6g}"
 
 

@@ -6,6 +6,7 @@ from typing import Any
 
 from qplanck.circuit import SUPPORTED_GATES, Circuit
 from qplanck.errors import InteropError
+from qplanck.interop import ConversionResult, InteropIssue, InteropIssueKind, LossReport
 from qplanck.ir import Parameter
 
 
@@ -28,7 +29,7 @@ def from_qiskit(quantum_circuit: Any) -> Circuit:
 
         if name == "measure":
             if len(qubits) != 1 or len(cargs) != 1:
-                raise InteropError("QCore v0.1 supports one-qubit measurements only.")
+                raise InteropError("QCore supports one-qubit measurements only.")
             cbit = _bit_index(quantum_circuit, cargs[0], "clbits")
             circuit.measure(qubits[0], cbit)
             continue
@@ -69,6 +70,57 @@ def to_qiskit(circuit: Circuit) -> Any:
     for measurement in circuit.measurements:
         quantum_circuit.measure(measurement.qubit, measurement.cbit)
     return quantum_circuit
+
+
+def to_qiskit_with_report(circuit: Circuit) -> ConversionResult[Any]:
+    """Convert to Qiskit and return explicit round-trip fidelity evidence."""
+
+    issues: list[InteropIssue] = []
+    extra_circuit_metadata = set(circuit.ir.metadata) - {"name"}
+    if extra_circuit_metadata:
+        issues.append(
+            InteropIssue(
+                code="QCORE-INTEROP-CIRCUIT-METADATA-DROPPED",
+                kind=InteropIssueKind.LOSS,
+                message="Only the QCore circuit name is mapped to Qiskit.",
+                path="metadata",
+            )
+        )
+    for index, operation in enumerate(circuit.operations):
+        if operation.metadata:
+            issues.append(
+                InteropIssue(
+                    code="QCORE-INTEROP-OPERATION-METADATA-DROPPED",
+                    kind=InteropIssueKind.LOSS,
+                    message="QCore operation metadata is not mapped to Qiskit instructions.",
+                    path=f"operations[{index}].metadata",
+                )
+            )
+    for index, measurement in enumerate(circuit.measurements):
+        if measurement.metadata:
+            issues.append(
+                InteropIssue(
+                    code="QCORE-INTEROP-MEASUREMENT-METADATA-DROPPED",
+                    kind=InteropIssueKind.LOSS,
+                    message="QCore measurement metadata is not mapped to Qiskit instructions.",
+                    path=f"measurements[{index}].metadata",
+                )
+            )
+
+    report = LossReport(
+        source_format=circuit.ir.schema_version,
+        target_format="qiskit-quantum-circuit-supported-subset",
+        preserved=(
+            "circuit name",
+            "operation order",
+            "supported gate semantics",
+            "numeric parameters",
+            "terminal measurement mapping",
+            "qubit count",
+        ),
+        issues=tuple(issues),
+    )
+    return ConversionResult(value=to_qiskit(circuit), report=report)
 
 
 def _require_qiskit() -> Any:
@@ -134,5 +186,5 @@ def _one_param(name: str, params: list[float]) -> float:
 
 def _numeric_param(value: float | Parameter) -> float:
     if isinstance(value, Parameter):
-        raise InteropError("QCore v0.1 exports numeric gate parameters only.")
+        raise InteropError("QCore exports numeric gate parameters only.")
     return float(value)

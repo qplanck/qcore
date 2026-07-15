@@ -49,3 +49,22 @@ def test_qasm3_rejects_unsupported_operations() -> None:
 def test_qasm3_rejects_wrong_version() -> None:
     with pytest.raises(QASMError, match="Only OpenQASM 3.0"):
         Circuit.from_qasm3("OPENQASM 2.0; qreg q[1];")
+
+
+def test_qasm3_export_reports_metadata_loss() -> None:
+    circuit = Circuit(1, name="metadata-is-not-qasm").h(0).measure_all()
+
+    exported = circuit.to_qasm3_with_report()
+
+    assert exported.value == circuit.to_qasm3()
+    assert not exported.report.is_lossless
+    assert exported.report.losses[0].code == "QCORE-INTEROP-CIRCUIT-METADATA-DROPPED"
+
+
+def test_qasm3_export_reports_lossless_semantic_subset() -> None:
+    circuit = Circuit(2).h(0).cx(0, 1).measure_all()
+
+    exported = circuit.to_qasm3_with_report()
+
+    assert exported.report.is_lossless
+    assert "supported gate semantics" in exported.report.preserved

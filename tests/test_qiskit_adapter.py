@@ -21,3 +21,13 @@ def test_qiskit_rejects_unsupported_instruction() -> None:
 
     with pytest.raises(InteropError, match="Unsupported Qiskit operation"):
         Circuit.from_qiskit(quantum_circuit)
+
+
+def test_qiskit_export_has_lossless_report_for_supported_subset() -> None:
+    circuit = Circuit(2, name="bell").h(0).cx(0, 1).measure_all()
+
+    exported = circuit.to_qiskit_with_report()
+
+    assert exported.report.is_lossless
+    assert exported.value.name == "bell"
+    assert "supported gate semantics" in exported.report.preserved

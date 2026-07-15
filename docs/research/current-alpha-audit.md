@@ -1,5 +1,10 @@
 # Current Alpha Audit
 
+**Historical note:** this source audit describes the Phase 0 implementation
+baseline, not the current `0.2.0a1` tree. See the
+[SDK standards contract](../sdk-standards.md) for the implemented compiler, QIR,
+pulse, and loss-report boundaries.
+
 > Baseline: commit `2f2ed07`  
 > Audit date: 2026-07-14  
 > Production code changes in Phase 0: none

@@ -1,5 +1,11 @@
 # QCore Phase 1 MVP Definition
 
+**Implementation update:** `0.2.0a1` now implements the initial deterministic
+compiler plus experimental QIR export and pulse/calibration representation
+boundaries. The exclusions below remain the original Phase 1 planning record;
+current capability claims are defined in the
+[SDK standards contract](../sdk-standards.md).
+
 > Status: Proposed  
 > Candidate release: `qplanck 0.2.0a1` (not committed)
 

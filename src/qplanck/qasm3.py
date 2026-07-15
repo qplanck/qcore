@@ -1,4 +1,4 @@
-"""OpenQASM 3 subset import/export for QCore v0.1."""
+"""OpenQASM 3 subset import/export for QCore."""
 
 from __future__ import annotations
 
@@ -8,6 +8,7 @@ import re
 
 from qplanck.circuit import SUPPORTED_GATES, Circuit
 from qplanck.errors import QASMError
+from qplanck.interop import ConversionResult, InteropIssue, InteropIssueKind, LossReport
 from qplanck.ir import Parameter
 
 _QUBIT_RE = re.compile(r"^qubit\[(?P<size>\d+)\]\s+(?P<name>[A-Za-z_]\w*)$")
@@ -55,6 +56,60 @@ def dumps(circuit: Circuit) -> str:
     return "\n".join(lines) + "\n"
 
 
+def dumps_with_report(circuit: Circuit) -> ConversionResult[str]:
+    """Export OpenQASM and describe information outside the supported subset.
+
+    The existing :func:`dumps` API remains convenient and compatible.  Release
+    tooling and cross-framework workflows should prefer this evidence-bearing
+    form whenever round-trip fidelity matters.
+    """
+
+    issues: list[InteropIssue] = []
+    if circuit.ir.metadata:
+        issues.append(
+            InteropIssue(
+                code="QCORE-INTEROP-CIRCUIT-METADATA-DROPPED",
+                kind=InteropIssueKind.LOSS,
+                message="The OpenQASM 3 subset does not encode QCore circuit metadata.",
+                path="metadata",
+            )
+        )
+    for index, operation in enumerate(circuit.operations):
+        if operation.metadata:
+            issues.append(
+                InteropIssue(
+                    code="QCORE-INTEROP-OPERATION-METADATA-DROPPED",
+                    kind=InteropIssueKind.LOSS,
+                    message="The OpenQASM 3 subset does not encode operation metadata.",
+                    path=f"operations[{index}].metadata",
+                )
+            )
+    for index, measurement in enumerate(circuit.measurements):
+        if measurement.metadata:
+            issues.append(
+                InteropIssue(
+                    code="QCORE-INTEROP-MEASUREMENT-METADATA-DROPPED",
+                    kind=InteropIssueKind.LOSS,
+                    message="The OpenQASM 3 subset does not encode measurement metadata.",
+                    path=f"measurements[{index}].metadata",
+                )
+            )
+
+    report = LossReport(
+        source_format=circuit.ir.schema_version,
+        target_format="openqasm-3.0-qplanck-subset",
+        preserved=(
+            "operation order",
+            "supported gate semantics",
+            "numeric parameters",
+            "terminal measurement mapping",
+            "qubit count",
+        ),
+        issues=tuple(issues),
+    )
+    return ConversionResult(value=dumps(circuit), report=report)
+
+
 def loads(text: str) -> Circuit:
     """Parse the supported OpenQASM 3 subset."""
 
@@ -75,7 +130,7 @@ def loads(text: str) -> Circuit:
         qubit_match = _QUBIT_RE.match(statement)
         if qubit_match:
             if circuit is not None:
-                raise QASMError("QCore v0.1 supports exactly one qubit register.")
+                raise QASMError("The QCore OpenQASM subset supports exactly one qubit register.")
             qreg_name = qubit_match.group("name")
             circuit = Circuit(int(qubit_match.group("size")))
             continue
@@ -83,7 +138,9 @@ def loads(text: str) -> Circuit:
         bit_match = _BIT_RE.match(statement)
         if bit_match:
             if creg_name is not None:
-                raise QASMError("QCore v0.1 supports exactly one classical bit register.")
+                raise QASMError(
+                    "The QCore OpenQASM subset supports exactly one classical bit register."
+                )
             creg_name = bit_match.group("name")
             continue
 
@@ -119,7 +176,7 @@ def _format_float(value: float) -> str:
 
 def _numeric_param(value: float | Parameter) -> float:
     if isinstance(value, Parameter):
-        raise QASMError("QCore v0.1 exports numeric gate parameters only.")
+        raise QASMError("The QCore OpenQASM subset exports numeric gate parameters only.")
     return float(value)
 
 

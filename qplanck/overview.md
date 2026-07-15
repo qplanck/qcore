@@ -4,7 +4,7 @@ description: "An overview of QPlanck's purpose, operating model, and long-term d
 icon: "circle-nodes"
 ---
 
-# What is QPlanck?
+## What is QPlanck?
 
 QPlanck is a quantum technology organization developing software, research and
 learning infrastructure, and high-signal technical media. Its work is organized

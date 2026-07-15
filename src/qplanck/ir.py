@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from types import MappingProxyType
@@ -27,7 +28,7 @@ def _metadata_to_dict(metadata: Mapping[str, Any]) -> dict[str, Any]:
 class Parameter:
     """A named parameter placeholder.
 
-    The v0.1 public circuit API accepts numeric parameters only, but the IR keeps
+    The current public circuit API accepts numeric parameters only, but the IR keeps
     this type so future importer/exporter work has a stable extension point.
     """
 
@@ -38,7 +39,10 @@ class Parameter:
         if not self.name:
             raise CircuitError("Parameter name must be non-empty.")
         if self.value is not None:
-            object.__setattr__(self, "value", float(self.value))
+            value = float(self.value)
+            if not math.isfinite(value):
+                raise CircuitError("Parameter values must be finite.")
+            object.__setattr__(self, "value", value)
 
     def to_dict(self) -> dict[str, Any]:
         return {"kind": "parameter", "name": self.name, "value": self.value}
@@ -72,7 +76,10 @@ class Operation:
             if isinstance(param, Parameter):
                 params.append(param)
             elif isinstance(param, int | float):
-                params.append(float(param))
+                value = float(param)
+                if not math.isfinite(value):
+                    raise CircuitError("Operation parameters must be finite.")
+                params.append(value)
             else:
                 raise CircuitError(f"Unsupported parameter type: {type(param).__name__}.")
 

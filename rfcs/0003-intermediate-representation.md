@@ -1,5 +1,11 @@
 # RFC 0003: Intermediate Representation Strategy
 
+> Implementation note (`0.2.0a1`): the accepted architectural boundary has been
+> prototyped as a deterministic QIR Base Profile text exporter for the supported
+> static subset. QIR remains a lowering target rather than QCore's source IR;
+> import, adaptive programs, runtime integration, and provider execution remain
+> deferred.
+
 - Status: **Proposed**
 - Date: 2026-07-14
 - Decision owners: Unassigned pending Phase 0 review

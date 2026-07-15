@@ -22,6 +22,9 @@ Include:
 ## Security Boundaries
 
 - OpenQASM import is data parsing only and must not execute Python.
+- QIR export emits text only; callers must validate it before external execution.
+- Pulse/calibration contracts validate local data only and never submit hardware
+  jobs from the core package.
 - Optional framework adapters are trusted local dependencies.
 - Future plugins must document trust boundaries before they are enabled by
   default.

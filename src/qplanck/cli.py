@@ -13,6 +13,7 @@ import numpy as np
 from qplanck import __version__
 from qplanck.circuit import Circuit
 from qplanck.errors import QPlanckError
+from qplanck.pulse import ConstantWaveform, DriveChannel, PulseProgram, PulseTarget
 from qplanck.simulator import Simulator
 
 
@@ -67,6 +68,13 @@ def _build_parser() -> argparse.ArgumentParser:
 def _doctor() -> int:
     circuit = Circuit(2, name="doctor").h(0).cx(0, 1).measure_all()
     result = Simulator("statevector").run(circuit, shots=16, seed=7, trace=True)
+    compiled = circuit.compile()
+    qir_module = compiled.to_circuit().to_qir()
+    drive = DriveChannel(0)
+    pulse_program = PulseProgram(name="doctor").play(
+        0, drive, ConstantWaveform(duration=4, amplitude=0.25)
+    )
+    pulse_program.validate(PulseTarget(channels=frozenset({drive})))
     qiskit_available = find_spec("qiskit") is not None
     print("QCore doctor")
     print(f"  qplanck: {__version__}")
@@ -75,6 +83,9 @@ def _doctor() -> int:
     print(f"  qiskit optional dependency: {'available' if qiskit_available else 'not installed'}")
     print(f"  smoke test counts: {result.counts}")
     print("  trace: ok" if result.trace is not None else "  trace: failed")
+    print(f"  compiler: {compiled.trace.pipeline_id}")
+    print(f"  qir: {qir_module.manifest.qir_version} {qir_module.profile.value}")
+    print(f"  pulse schema: {pulse_program.schema_version}")
     return 0 if result.trace is not None else 1
 
 

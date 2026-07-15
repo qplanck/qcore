@@ -10,6 +10,9 @@ from qplanck.errors import CircuitError, UnsupportedOperationError
 from qplanck.ir import CircuitIR, MeasurementSpec, Operation, Parameter
 
 if TYPE_CHECKING:
+    from qplanck.compiler import CompiledCircuit, CompileOptions
+    from qplanck.interop import ConversionResult
+    from qplanck.qir import QIRCapabilities, QIRModule, QIRProfile
     from qplanck.results import ExecutionTrace
 
 
@@ -35,7 +38,7 @@ SUPPORTED_GATES: dict[str, GateSpec] = {
 
 
 class Circuit:
-    """A small, fluent quantum circuit API for QCore v0.1."""
+    """A small, fluent quantum circuit API for QCore's supported static subset."""
 
     _ir: CircuitIR
     supported_gates: ClassVar[frozenset[str]] = frozenset(SUPPORTED_GATES)
@@ -75,6 +78,13 @@ class Circuit:
 
         return dumps(self)
 
+    def to_qasm3_with_report(self) -> ConversionResult[str]:
+        """Export OpenQASM together with a machine-readable fidelity report."""
+
+        from qplanck.qasm3 import dumps_with_report
+
+        return dumps_with_report(self)
+
     @classmethod
     def from_qiskit(cls, quantum_circuit: Any) -> Circuit:
         from qplanck.qiskit_adapter import from_qiskit
@@ -85,6 +95,13 @@ class Circuit:
         from qplanck.qiskit_adapter import to_qiskit
 
         return to_qiskit(self)
+
+    def to_qiskit_with_report(self) -> ConversionResult[Any]:
+        """Export Qiskit together with a machine-readable fidelity report."""
+
+        from qplanck.qiskit_adapter import to_qiskit_with_report
+
+        return to_qiskit_with_report(self)
 
     @property
     def ir(self) -> CircuitIR:
@@ -112,7 +129,7 @@ class Circuit:
             raise CircuitError("Circuit.add() expects a qplanck.ir.Operation.")
         if self._ir.measurements:
             raise UnsupportedOperationError(
-                "QCore v0.1 supports terminal measurements only; add gates before measure()."
+                "QCore supports terminal measurements only; add gates before measure()."
             )
         self._validate_operation(op)
         self._ir = self._ir.with_operation(op)
@@ -173,7 +190,7 @@ class Circuit:
 
     def draw(self, style: str = "ascii") -> str:
         if style != "ascii":
-            raise UnsupportedOperationError("QCore v0.1 supports only ASCII drawing.")
+            raise UnsupportedOperationError("QCore supports only ASCII drawing.")
         from qplanck.draw import draw_ascii
 
         return draw_ascii(self)
@@ -182,6 +199,49 @@ class Circuit:
         from qplanck.simulator import Simulator
 
         return Simulator("statevector").run(self, trace=True).trace
+
+    def compile(self, options: CompileOptions | None = None) -> CompiledCircuit:
+        """Run the deterministic graph compiler without mutating this circuit."""
+
+        from qplanck.compiler import compile
+
+        return compile(self, options)
+
+    def to_qir(
+        self,
+        *,
+        profile: QIRProfile | str = "base_profile",
+        capabilities: QIRCapabilities | None = None,
+        entry_point: str = "qplanck_main",
+    ) -> QIRModule:
+        """Lower the supported static subset to deterministic LLVM/QIR text."""
+
+        from qplanck.qir import export_qir
+
+        return export_qir(
+            self,
+            profile=profile,
+            capabilities=capabilities,
+            entry_point=entry_point,
+        )
+
+    def to_qir_with_report(
+        self,
+        *,
+        profile: QIRProfile | str = "base_profile",
+        capabilities: QIRCapabilities | None = None,
+        entry_point: str = "qplanck_main",
+    ) -> ConversionResult[QIRModule]:
+        """Lower to QIR together with machine-readable fidelity evidence."""
+
+        from qplanck.qir import export_qir_with_report
+
+        return export_qir_with_report(
+            self,
+            profile=profile,
+            capabilities=capabilities,
+            entry_point=entry_point,
+        )
 
     def to_dict(self) -> dict[str, Any]:
         return self._ir.to_dict()
@@ -215,7 +275,7 @@ class Circuit:
         if operation.name in {"cx", "cz"} and operation.qubits[0] == operation.qubits[1]:
             raise CircuitError(f"Gate {operation.name!r} requires distinct qubits.")
         if any(isinstance(param, Parameter) for param in operation.params):
-            raise UnsupportedOperationError("QCore v0.1 supports numeric gate parameters only.")
+            raise UnsupportedOperationError("QCore supports numeric gate parameters only.")
 
     def _validate_measurements(self) -> None:
         seen_qubits: set[int] = set()

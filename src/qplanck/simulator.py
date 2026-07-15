@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, cast
 import numpy as np
 from numpy.typing import NDArray
 
-from qplanck.errors import UnsupportedOperationError
+from qplanck.errors import ResourceLimitError, UnsupportedOperationError
 from qplanck.results import (
     ExecutionTrace,
     ProbabilityResult,
@@ -24,18 +24,27 @@ if TYPE_CHECKING:
 
 
 ComplexArray = NDArray[np.complex128]
+DEFAULT_MAX_STATEVECTOR_BYTES = 256 * 1024 * 1024
 
 
 class Simulator:
     """Simulator facade.
 
-    v0.1 ships only the exact NumPy statevector backend.
+    The core package ships only the exact NumPy statevector backend.
     """
 
-    def __init__(self, backend: str = "statevector"):
+    def __init__(
+        self,
+        backend: str = "statevector",
+        *,
+        max_statevector_bytes: int = DEFAULT_MAX_STATEVECTOR_BYTES,
+    ):
         if backend != "statevector":
-            raise UnsupportedOperationError("QCore v0.1 supports only the statevector backend.")
+            raise UnsupportedOperationError("QCore supports only the statevector backend.")
+        if max_statevector_bytes <= 0:
+            raise ValueError("max_statevector_bytes must be positive.")
         self.backend = backend
+        self.max_statevector_bytes = int(max_statevector_bytes)
 
     def run(
         self,
@@ -62,7 +71,7 @@ class Simulator:
             probability_vector = np.abs(state) ** 2
             probability_vector = probability_vector / probability_vector.sum()
             samples = rng.choice(basis_states, size=shots, p=probability_vector)
-            measurements = [_basis_key(int(sample), circuit.qubit_count) for sample in samples]
+            measurements = [_measurement_key(int(sample), circuit) for sample in samples]
             counts = dict(sorted(Counter(measurements).items()))
 
         return RunResult(
@@ -74,7 +83,8 @@ class Simulator:
                 "shots": shots,
                 "seed": seed,
                 "endianness": "little",
-                "basis_key_order": "q[n-1]...q[0]",
+                "basis_key_order": ("c[n-1]...c[0]" if circuit.measurements else "q[n-1]...q[0]"),
+                "measurement_mode": "explicit" if circuit.measurements else "implicit-all-qubits",
             },
             trace=execution_trace,
         )
@@ -105,6 +115,12 @@ class Simulator:
                 f"Trace JSON defaults to at most {max_trace_qubits} qubits; "
                 "rerun with a larger max_trace_qubits only if the payload size is acceptable."
             )
+        statevector_bytes = (1 << circuit.qubit_count) * np.dtype(np.complex128).itemsize
+        if statevector_bytes > self.max_statevector_bytes:
+            raise ResourceLimitError(
+                f"Statevector requires {statevector_bytes} bytes, exceeding the "
+                f"configured {self.max_statevector_bytes}-byte limit."
+            )
         state = np.zeros(2**circuit.qubit_count, dtype=np.complex128)
         state[0] = 1.0 + 0.0j
 
@@ -134,6 +150,18 @@ class Simulator:
 
 def _basis_key(index: int, qubit_count: int) -> str:
     return "".join(str((index >> qubit) & 1) for qubit in reversed(range(qubit_count)))
+
+
+def _measurement_key(index: int, circuit: Circuit) -> str:
+    """Map a sampled basis state into dense classical-register display order."""
+
+    if not circuit.measurements:
+        return _basis_key(index, circuit.qubit_count)
+    classical_count = max(measurement.cbit for measurement in circuit.measurements) + 1
+    values = [0] * classical_count
+    for measurement in circuit.measurements:
+        values[measurement.cbit] = (index >> measurement.qubit) & 1
+    return "".join(str(values[cbit]) for cbit in reversed(range(classical_count)))
 
 
 def _probability_dict(state: ComplexArray, qubit_count: int) -> dict[str, float]:

@@ -1,5 +1,12 @@
 # QCore Positioning and Product Strategy
 
+**Implementation update (`0.2.0a1`):** the deterministic compiler foundation,
+loss reports, experimental QIR base-profile exporter, and experimental
+hardware-neutral pulse/calibration schema now exist. The native accelerator and
+provider pulse execution remain gated. The
+[SDK standards contract](../sdk-standards.md) is authoritative for current
+capability claims.
+
 > Status: Proposed for Phase 0 review  
 > Evidence cut-off: 2026-07-14
 

@@ -49,3 +49,14 @@ def test_circuit_json_round_trip() -> None:
     restored = Circuit.from_json(circuit.to_json())
 
     assert restored.to_dict() == circuit.to_dict()
+
+
+def test_circuit_compiler_and_qir_conveniences() -> None:
+    circuit = Circuit(1).h(0).h(0).measure_all()
+
+    compiled = circuit.compile()
+    qir_module = compiled.to_circuit().to_qir()
+
+    assert compiled.operations == ()
+    assert qir_module.manifest.required_num_qubits == 1
+    assert qir_module.manifest.required_num_results == 1

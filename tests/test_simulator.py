@@ -5,7 +5,13 @@ import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
-from qplanck import Circuit, ExecutionTrace, Simulator, UnsupportedOperationError
+from qplanck import (
+    Circuit,
+    ExecutionTrace,
+    ResourceLimitError,
+    Simulator,
+    UnsupportedOperationError,
+)
 
 
 def test_single_qubit_h_probabilities() -> None:
@@ -65,6 +71,31 @@ def test_trace_json_round_trip() -> None:
 def test_trace_qubit_limit() -> None:
     with pytest.raises(UnsupportedOperationError, match="at most 8 qubits"):
         Simulator().run(Circuit(9), trace=True)
+
+
+def test_explicit_measurements_map_qubits_to_classical_bits() -> None:
+    circuit = Circuit(3).x(0).x(2).measure(0, 2).measure(1, 0)
+
+    result = Simulator().run(circuit, shots=4, seed=7)
+
+    assert result.counts == {"100": 4}
+    assert result.measurements == ["100"] * 4
+    assert result.metadata["basis_key_order"] == "c[n-1]...c[0]"
+    assert result.metadata["measurement_mode"] == "explicit"
+
+
+def test_unmeasured_circuit_retains_implicit_all_qubits_sampling() -> None:
+    result = Simulator().run(Circuit(2).x(1), shots=2, seed=7)
+
+    assert result.counts == {"10": 2}
+    assert result.metadata["measurement_mode"] == "implicit-all-qubits"
+
+
+def test_statevector_allocation_is_rejected_before_budget_is_exceeded() -> None:
+    simulator = Simulator(max_statevector_bytes=16)
+
+    with pytest.raises(ResourceLimitError, match="32 bytes"):
+        simulator.run(Circuit(1).h(0))
 
 
 @given(st.floats(min_value=-2 * math.pi, max_value=2 * math.pi, allow_nan=False))

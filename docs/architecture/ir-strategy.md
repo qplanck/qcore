@@ -1,5 +1,10 @@
 # Intermediate Representation Strategy
 
+**Implementation update (`0.2.0a1`):** `CircuitIR` remains the source of truth;
+the compiler derives an immutable dependency graph, and the experimental QIR
+exporter lowers the supported static subset to QIR 2.0 Base Profile LLVM text
+with a source/resource manifest. QIR is not a replacement source IR.
+
 > Status: Proposed  
 > Governing decision: [RFC 0003](../../rfcs/0003-intermediate-representation.md)
 

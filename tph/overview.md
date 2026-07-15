@@ -5,7 +5,7 @@ description: "The purpose, audience, and editorial structure of QPlanck's quantu
 icon: "newspaper"
 ---
 
-# The Planck Horizon
+## The Planck Horizon
 
 **The Planck Horizon (TPH)** is QPlanck's quantum intelligence newsletter. It is
 designed to interpret consequential developments in quantum computing, quantum

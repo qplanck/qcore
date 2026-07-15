@@ -1,12 +1,18 @@
 # QCore Initial Threat Model
 
+**Implementation update (`0.2.0a1`):** QIR export and local pulse/calibration JSON
+are now in scope. They do not execute external tools or contact providers. The
+statevector simulator now performs allocation preflight and IR numeric values
+reject NaN/infinity; parser-wide byte/depth limits remain release-hardening work.
+
 > Status: Proposed Phase 0 baseline  
 > Scope: local SDK, CLI, static Labs, future plugins/agents/adapters
 
 ## Security objectives
 
-1. Untrusted circuit, QASM, JSON, trace, notebook, or result data must not execute
-   code merely by being parsed, validated, rendered, or inspected.
+1. Untrusted circuit, QASM, QIR-related options, pulse/calibration JSON, trace,
+   notebook, or result data must not execute code merely by being parsed,
+   validated, rendered, or inspected.
 2. Work must be rejected before disproportionate memory, CPU, trace, result, or
    remote-spend consumption where estimates are possible.
 3. Credentials and sensitive environment data must not enter IR, diagnostics,
@@ -83,6 +89,8 @@ probability claims.
 | SEC-018 | Manifest/hash is mistaken for authenticity | 1 | Medium | Medium | Documentation states content hashes are not signatures; optional signing later | Social/process misuse remains possible |
 | SEC-019 | Algorithmic/compiler bug produces plausible wrong result | All | Medium | Critical | Independent oracles, invariants, randomized/differential tests, versioned diagnostics, accepted limitations | Quantum correctness cannot be secured solely through access controls |
 | SEC-020 | Name collision imports unrelated `qcore` package | 1/facade | High if facade attempted | High | Keep `qplanck`; future `doctor` verifies distribution owner/path/version before facade | User environments may be compromised already; fail closed and explain remediation |
+| SEC-021 | Untrusted QIR export identifiers inject malformed LLVM text or unsupported QIS | 1/5 | Medium | High | Validate entry-point grammar, fixed labels, allowlisted gate lowering, explicit QIS capabilities, LLVM/PyQIR fixtures | Generated text still requires independent validation before external execution |
+| SEC-022 | Oversized or invalid pulse/calibration schedules exhaust resources or misrepresent target validity | 1/5 | Medium | High | Finite/bounded values, immutable typed channels, overlap/alignment/target validation, JSON-only decoding, no core hardware transport | Provider mapping and input-size budgets require separate adapter/release review |
 
 ## Phase 1 mandatory controls
 
@@ -136,4 +144,5 @@ Kubernetes or a sandbox vendor alone does not satisfy this gate.
 
 Re-run this threat model before enabling any remote backend, hosted kernel,
 third-party automatic plugin load, agent network tool, arbitrary notebook package,
-new serialization format, native extension, or public artifact-sharing service.
+new serialization format, native extension, OpenPulse/QIR external tool execution,
+provider pulse mapping, or public artifact-sharing service.
