@@ -22,6 +22,7 @@
         "group": "QCore",
         "pages": [
           "docs/index",
+          "docs/quickstart",
           "docs/executive-summary",
           "docs/reviews/phase-0-review",
           "docs/strategy/qcore-positioning"
