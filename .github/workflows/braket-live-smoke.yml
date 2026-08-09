@@ -70,7 +70,7 @@ jobs:
 
       - name: Upload redacted execution evidence
         if: ${{ always() && hashFiles('braket-live-result.json') != '' }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: braket-live-smoke-evidence
           path: braket-live-result.json

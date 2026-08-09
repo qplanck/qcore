@@ -57,7 +57,7 @@ jobs:
           python -m pip install --no-deps --force-reinstall packages/qplanck-braket/dist/*.whl
           python -c "import qplanck_braket; print(qplanck_braket.BraketPulseBackend.__name__)"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: qplanck-braket-dist
           path: packages/qplanck-braket/dist/*
