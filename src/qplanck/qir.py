@@ -12,19 +12,24 @@ submission to hardware.
 
 from __future__ import annotations
 
+import hashlib
 import math
 import re
 import struct
-from dataclasses import dataclass
+from collections.abc import Mapping
+from dataclasses import dataclass, field
 from enum import StrEnum
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, Literal
 
+from qplanck._native import lower_qir as _native_lower_qir
 from qplanck.errors import InteropError
 from qplanck.interop import ConversionResult, InteropIssue, InteropIssueKind, LossReport
 from qplanck.ir import CircuitIR, Parameter
 
 if TYPE_CHECKING:
     from qplanck.circuit import Circuit
+    from qplanck.compiler import CompiledCircuit
 
 
 __all__ = [
@@ -33,6 +38,7 @@ __all__ = [
     "QIR_MINOR_VERSION",
     "SUPPORTED_QIS",
     "QIRCapabilities",
+    "QIRCompilerMapEntry",
     "QIRExportError",
     "QIRManifest",
     "QIRMeasurementMap",
@@ -80,6 +86,8 @@ _GATE_SPECS: dict[str, _GateSpec] = {
     "rz": _GateSpec("rz", 1, 1),
     "cx": _GateSpec("cnot", 2, 0),
     "cz": _GateSpec("cz", 2, 0),
+    # Base Profile does not require a SWAP QIS. It is emitted as three CNOTs.
+    "swap": _GateSpec("cnot", 2, 0),
 }
 
 SUPPORTED_QIS = frozenset({spec.qir_name for spec in _GATE_SPECS.values()} | {"mz"})
@@ -172,6 +180,26 @@ class QIRMeasurementMap:
 
 
 @dataclass(frozen=True)
+class QIRCompilerMapEntry:
+    """Composition from compiler/routing origin to emitted QIS calls."""
+
+    origin_kind: Literal["source-operation", "routing-step"]
+    origin_index: int
+    routed_indices: tuple[int, ...]
+    compiled_indices: tuple[int, ...]
+    qir_call_indices: tuple[int, ...]
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "origin_kind": self.origin_kind,
+            "origin_index": self.origin_index,
+            "routed_indices": list(self.routed_indices),
+            "compiled_indices": list(self.compiled_indices),
+            "qir_call_indices": list(self.qir_call_indices),
+        }
+
+
+@dataclass(frozen=True)
 class QIRManifest:
     """Machine-readable account of the QIR lowering boundary."""
 
@@ -182,6 +210,15 @@ class QIRManifest:
     required_qis: tuple[str, ...]
     measurement_map: tuple[QIRMeasurementMap, ...]
     source_map: tuple[QIRSourceMapEntry, ...]
+    compiler_map: tuple[QIRCompilerMapEntry, ...] = ()
+    source_ir_hash: str | None = None
+    compiled_ir_hash: str | None = None
+    target_hash: str | None = None
+    compiled_artifact_hash: str | None = None
+    compiler_trace_hash: str | None = None
+    compiler_trace_schema: str | None = None
+    routing_trace_hash: str | None = None
+    routing_trace_schema: str | None = None
     qir_major_version: int = QIR_MAJOR_VERSION
     qir_minor_version: int = QIR_MINOR_VERSION
     output_labeling_schema: str = OUTPUT_LABELING_SCHEMA
@@ -205,6 +242,15 @@ class QIRManifest:
             "dynamic_result_management": self.dynamic_result_management,
             "measurement_map": [item.to_dict() for item in self.measurement_map],
             "source_map": [item.to_dict() for item in self.source_map],
+            "compiler_map": [item.to_dict() for item in self.compiler_map],
+            "source_ir_hash": self.source_ir_hash,
+            "compiled_ir_hash": self.compiled_ir_hash,
+            "target_hash": self.target_hash,
+            "compiled_artifact_hash": self.compiled_artifact_hash,
+            "compiler_trace_hash": self.compiler_trace_hash,
+            "compiler_trace_schema": self.compiler_trace_schema,
+            "routing_trace_hash": self.routing_trace_hash,
+            "routing_trace_schema": self.routing_trace_schema,
         }
 
 
@@ -214,6 +260,14 @@ class QIRModule:
 
     text: str
     manifest: QIRManifest
+    native_implementation: Mapping[str, str] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "native_implementation",
+            MappingProxyType(dict(sorted(self.native_implementation.items()))),
+        )
 
     @property
     def metadata(self) -> dict[str, Any]:
@@ -237,22 +291,121 @@ class _Lowering:
     required_qis: tuple[str, ...]
 
 
+def _canonical_hash(value: object) -> str:
+    import json
+
+    payload = json.dumps(
+        value,
+        allow_nan=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("utf-8")
+    return f"sha256:{hashlib.sha256(payload).hexdigest()}"
+
+
+def _compiler_map(
+    compiled: CompiledCircuit | None,
+    source_map: tuple[QIRSourceMapEntry, ...],
+) -> tuple[QIRCompilerMapEntry, ...]:
+    if compiled is None:
+        return ()
+
+    calls_by_compiled: dict[int, tuple[int, ...]] = {}
+    for source_index in range(len(compiled.ir.operations)):
+        calls_by_compiled[source_index] = tuple(
+            item.qis_call_index
+            for item in source_map
+            if item.source_kind == "operation" and item.source_index == source_index
+        )
+
+    routing = compiled.routing_trace
+    if routing is None:
+        return tuple(
+            QIRCompilerMapEntry(
+                origin_kind="source-operation",
+                origin_index=index,
+                routed_indices=(),
+                compiled_indices=(index,),
+                qir_call_indices=calls_by_compiled[index],
+            )
+            for index in range(len(compiled.ir.operations))
+        )
+
+    entries: list[QIRCompilerMapEntry] = []
+    mapped_routed: set[int] = set()
+    for source_index, routed_indices in enumerate(routing.source_to_routed_indices):
+        mapped_routed.update(routed_indices)
+        compiled_indices = tuple(
+            compiled_index
+            for routed_index in routed_indices
+            for compiled_index in routing.routed_to_final_indices[routed_index]
+        )
+        entries.append(
+            QIRCompilerMapEntry(
+                origin_kind="source-operation",
+                origin_index=source_index,
+                routed_indices=routed_indices,
+                compiled_indices=compiled_indices,
+                qir_call_indices=tuple(
+                    call
+                    for compiled_index in compiled_indices
+                    for call in calls_by_compiled[compiled_index]
+                ),
+            )
+        )
+
+    if compiled.routed_ir is not None:
+        for routed_index, operation in enumerate(compiled.routed_ir.operations):
+            if routed_index in mapped_routed:
+                continue
+            routing_step = operation.metadata.get("routing_step")
+            if operation.metadata.get("qplanck.inserted") != "routing" or not isinstance(
+                routing_step, int
+            ):
+                continue
+            compiled_indices = routing.routed_to_final_indices[routed_index]
+            entries.append(
+                QIRCompilerMapEntry(
+                    origin_kind="routing-step",
+                    origin_index=routing_step,
+                    routed_indices=(routed_index,),
+                    compiled_indices=compiled_indices,
+                    qir_call_indices=tuple(
+                        call
+                        for compiled_index in compiled_indices
+                        for call in calls_by_compiled[compiled_index]
+                    ),
+                )
+            )
+
+    return tuple(
+        sorted(
+            entries,
+            key=lambda item: (
+                item.qir_call_indices or (2**63 - 1,),
+                item.origin_kind,
+                item.origin_index,
+            ),
+        )
+    )
+
+
 def validate_capabilities(
-    source: Circuit | CircuitIR,
+    source: Circuit | CircuitIR | CompiledCircuit,
     capabilities: QIRCapabilities | None = None,
     *,
     profile: QIRProfile | str = QIRProfile.BASE,
 ) -> None:
     """Validate ``source`` against the supported Base Profile and target QIS."""
 
-    ir = _as_ir(source)
+    ir, _ = _as_ir_and_compiled(source)
     selected_profile = _coerce_profile(profile)
     target = capabilities if capabilities is not None else QIRCapabilities(profile=selected_profile)
-    _prepare_lowering(ir, selected_profile, target)
+    _lower_native(ir, selected_profile, target, "qplanck_main")
 
 
 def export_qir(
-    source: Circuit | CircuitIR,
+    source: Circuit | CircuitIR | CompiledCircuit,
     *,
     profile: QIRProfile | str = QIRProfile.BASE,
     capabilities: QIRCapabilities | None = None,
@@ -265,27 +418,108 @@ def export_qir(
     manifest.  Unsupported or ambiguous constructs raise :class:`QIRExportError`.
     """
 
+    ir, compiled = _as_ir_and_compiled(source)
+    selected_profile = _coerce_profile(profile)
+    target = capabilities if capabilities is not None else QIRCapabilities(profile=selected_profile)
+    response = _lower_native(ir, selected_profile, target, entry_point)
+    measurement_map = tuple(
+        QIRMeasurementMap(
+            source_index=int(item["source_index"]),
+            qubit=int(item["qubit"]),
+            classical_bit=int(item["classical_bit"]),
+            result_id=int(item["result_id"]),
+            output_index=int(item["output_index"]),
+            label=str(item["label"]),
+        )
+        for item in response["measurement_map"]
+    )
+    source_map = tuple(
+        QIRSourceMapEntry(
+            qis_call_index=int(item["qis_call_index"]),
+            block=item["block"],
+            source_kind=item["source_kind"],
+            source_index=int(item["source_index"]),
+            source_operation=str(item["source_operation"]),
+            qir_function=str(item["qir_function"]),
+            qubits=tuple(int(qubit) for qubit in item["qubits"]),
+            result_id=(None if item.get("result_id") is None else int(item["result_id"])),
+            classical_bit=(
+                None if item.get("classical_bit") is None else int(item["classical_bit"])
+            ),
+        )
+        for item in response["source_map"]
+    )
+    trace_hash = None if compiled is None else compiled.trace.content_hash
+    routing_trace_hash = (
+        None
+        if compiled is None or compiled.routing_trace is None
+        else _canonical_hash(compiled.routing_trace.to_dict())
+    )
+    manifest = QIRManifest(
+        profile=selected_profile,
+        entry_point=entry_point,
+        required_num_qubits=int(response["required_num_qubits"]),
+        required_num_results=int(response["required_num_results"]),
+        required_qis=tuple(str(item) for item in response["required_qis"]),
+        measurement_map=measurement_map,
+        source_map=source_map,
+        compiler_map=_compiler_map(compiled, source_map),
+        source_ir_hash=(
+            _canonical_hash(ir.to_dict())
+            if compiled is None
+            else compiled.trace.input_ir_hash
+        ),
+        compiled_ir_hash=(None if compiled is None else compiled.trace.output_ir_hash),
+        target_hash=None if compiled is None else compiled.target_hash,
+        compiled_artifact_hash=(None if compiled is None else compiled.content_hash),
+        compiler_trace_hash=trace_hash,
+        compiler_trace_schema=(None if compiled is None else compiled.trace.schema_version),
+        routing_trace_hash=routing_trace_hash,
+        routing_trace_schema=(
+            None
+            if compiled is None or compiled.routing_trace is None
+            else compiled.routing_trace.schema_version
+        ),
+    )
+    implementation = response.get("implementation", {})
+    return QIRModule(
+        text=str(response["text"]),
+        manifest=manifest,
+        native_implementation={str(key): str(value) for key, value in implementation.items()},
+    )
+
+
+def _export_qir_reference(
+    source: Circuit | CircuitIR,
+    *,
+    profile: QIRProfile | str = QIRProfile.BASE,
+    capabilities: QIRCapabilities | None = None,
+    entry_point: str = "qplanck_main",
+) -> QIRModule:
+    """Run the frozen Python QIR oracle without touching production lowering."""
+
     ir = _as_ir(source)
     selected_profile = _coerce_profile(profile)
     target = capabilities if capabilities is not None else QIRCapabilities(profile=selected_profile)
     lowering = _prepare_lowering(ir, selected_profile, target)
     _validate_entry_point(entry_point)
-
     text, source_map = _emit_module(lowering, entry_point)
-    manifest = QIRManifest(
-        profile=selected_profile,
-        entry_point=entry_point,
-        required_num_qubits=ir.qubit_count,
-        required_num_results=len(lowering.measurements),
-        required_qis=lowering.required_qis,
-        measurement_map=lowering.measurements,
-        source_map=source_map,
+    return QIRModule(
+        text=text,
+        manifest=QIRManifest(
+            profile=selected_profile,
+            entry_point=entry_point,
+            required_num_qubits=ir.qubit_count,
+            required_num_results=len(lowering.measurements),
+            required_qis=lowering.required_qis,
+            measurement_map=lowering.measurements,
+            source_map=source_map,
+        ),
     )
-    return QIRModule(text=text, manifest=manifest)
 
 
 def export_qir_with_report(
-    source: Circuit | CircuitIR,
+    source: Circuit | CircuitIR | CompiledCircuit,
     *,
     profile: QIRProfile | str = QIRProfile.BASE,
     capabilities: QIRCapabilities | None = None,
@@ -293,7 +527,7 @@ def export_qir_with_report(
 ) -> ConversionResult[QIRModule]:
     """Export QIR and report QCore information not represented in the module."""
 
-    ir = _as_ir(source)
+    ir, _ = _as_ir_and_compiled(source)
     issues: list[InteropIssue] = []
     if ir.metadata:
         issues.append(
@@ -326,7 +560,7 @@ def export_qir_with_report(
             )
 
     module = export_qir(
-        ir,
+        source,
         profile=profile,
         capabilities=capabilities,
         entry_point=entry_point,
@@ -348,7 +582,7 @@ def export_qir_with_report(
 
 
 def dumps(
-    source: Circuit | CircuitIR,
+    source: Circuit | CircuitIR | CompiledCircuit,
     *,
     profile: QIRProfile | str = QIRProfile.BASE,
     capabilities: QIRCapabilities | None = None,
@@ -364,15 +598,27 @@ def dumps(
     ).text
 
 
-def _as_ir(source: Circuit | CircuitIR) -> CircuitIR:
+def _as_ir_and_compiled(
+    source: Circuit | CircuitIR | CompiledCircuit,
+) -> tuple[CircuitIR, CompiledCircuit | None]:
     if isinstance(source, CircuitIR):
-        return source
+        return source, None
 
     from qplanck.circuit import Circuit
+    from qplanck.compiler import CompiledCircuit
 
     if isinstance(source, Circuit):
-        return source.ir
-    raise QIRExportError("QIR export expects a qplanck.Circuit or qplanck.ir.CircuitIR.")
+        return source.ir, None
+    if isinstance(source, CompiledCircuit):
+        return source.ir, source
+    raise QIRExportError(
+        "QIR export expects a qplanck.Circuit, qplanck.ir.CircuitIR, or "
+        "qplanck.compiler.CompiledCircuit."
+    )
+
+
+def _as_ir(source: Circuit | CircuitIR | CompiledCircuit) -> CircuitIR:
+    return _as_ir_and_compiled(source)[0]
 
 
 def _coerce_profile(profile: QIRProfile | str) -> QIRProfile:
@@ -380,6 +626,34 @@ def _coerce_profile(profile: QIRProfile | str) -> QIRProfile:
         return QIRProfile(profile)
     except ValueError as exc:
         raise QIRExportError(f"Unsupported QIR profile: {profile!r}.") from exc
+
+
+def _lower_native(
+    ir: CircuitIR,
+    profile: QIRProfile,
+    capabilities: QIRCapabilities,
+    entry_point: str,
+) -> dict[str, Any]:
+    if capabilities.profile is not profile:
+        raise QIRExportError(
+            f"Selected profile {profile.value!r} does not match target profile "
+            f"{capabilities.profile.value!r}."
+        )
+    try:
+        ir_json = ir.to_json()
+    except (TypeError, ValueError) as error:
+        raise QIRExportError("Circuit IR metadata must be JSON-serializable.") from error
+    try:
+        return _native_lower_qir(
+            ir_json,
+            profile=profile.value,
+            supported_qis=capabilities.supported_qis,
+            max_qubits=capabilities.max_qubits,
+            max_results=capabilities.max_results,
+            entry_point=entry_point,
+        )
+    except ValueError as error:
+        raise QIRExportError(str(error)) from error
 
 
 def _prepare_lowering(
@@ -416,7 +690,7 @@ def _prepare_lowering(
                 f"Operation {index} ({operation.name!r}) expects {spec.params} parameter(s), "
                 f"got {len(operation.params)}."
             )
-        if operation.name in {"cx", "cz"} and operation.qubits[0] == operation.qubits[1]:
+        if operation.name in {"cx", "cz", "swap"} and operation.qubits[0] == operation.qubits[1]:
             raise QIRExportError(
                 f"Operation {index} ({operation.name!r}) requires distinct qubits."
             )
@@ -530,6 +804,25 @@ def _emit_module(
     for source_index, operation in enumerate(ir.operations):
         spec = _GATE_SPECS[operation.name]
         qir_function = _qis_symbol(spec.qir_name)
+        if operation.name == "swap":
+            left, right = operation.qubits
+            for qubits in ((left, right), (right, left), (left, right)):
+                args = [_pointer(qubit) for qubit in qubits]
+                lines.append(
+                    f"  call void @{qir_function}({', '.join(f'ptr {arg}' for arg in args)})"
+                )
+                source_map.append(
+                    QIRSourceMapEntry(
+                        qis_call_index=len(source_map),
+                        block="body",
+                        source_kind="operation",
+                        source_index=source_index,
+                        source_operation=operation.name,
+                        qir_function=qir_function,
+                        qubits=qubits,
+                    )
+                )
+            continue
         args = [*(_double_literal(_numeric_parameter(value)) for value in operation.params)]
         args.extend(_pointer(qubit) for qubit in operation.qubits)
         typed_args = _typed_gate_args(operation.name, args)

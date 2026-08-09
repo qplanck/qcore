@@ -1,10 +1,9 @@
 # RFC 0003: Intermediate Representation Strategy
 
-> Implementation note (`0.2.0a1`): the accepted architectural boundary has been
-> prototyped as a deterministic QIR Base Profile text exporter for the supported
-> static subset. QIR remains a lowering target rather than QCore's source IR;
-> import, adaptive programs, runtime integration, and provider execution remain
-> deferred.
+> Implementation note (`0.3.0a1`): `CircuitIR v0.1` remains the canonical source
+> representation and conceptual source/HIR layer without a public rename. The
+> native QIR Base Profile exporter remains a lowering boundary. Public
+> HIR/MIR/LIR and an MLIR dialect remain deferred.
 
 - Status: **Proposed**
 - Date: 2026-07-14
@@ -93,15 +92,12 @@ The complete proposed schema example and option matrix live in
 | Variational/observable workflows | Typed parameter binding and observable schemas |
 | Photonic/continuous-variable programs | Separate program kind preserving non-qubit semantics |
 
-## Measurement blocker
+## Measurement resolution
 
-**Verified:** The current simulator does not apply `MeasurementSpec` mappings to
-sampled count keys.
-
-**Decision:** Before schema evolution, Phase 1 must accept exact semantics for
-dense unique classical mappings, partial measurements, implicit measurement,
-duplicate sources/destinations, and bit-string order. The current recommendation
-is in [runtime architecture](../docs/architecture/runtime-and-backends.md).
+The Rust simulator applies unique terminal `MeasurementSpec` mappings to dense
+classical count keys, preserves implicit-all-qubits sampling when no measurement
+is declared, and records the bit-string convention in results and manifests.
+Duplicate qubit or classical destinations fail static validation.
 
 ## Security
 
@@ -147,4 +143,5 @@ is in [runtime architecture](../docs/architecture/runtime-and-backends.md).
 
 ## Acceptance record
 
-Pending Phase 0 milestone review.
+Pending Phase 0 milestone review. The 0.3 implementation note records current
+behavior without pre-accepting later schema evolution.

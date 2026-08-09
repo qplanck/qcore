@@ -1,19 +1,19 @@
 # RFC 0002: Language, Repository, and Naming Strategy
 
-> Implementation note (`0.2.0a1`): the compiler now derives an immutable
-> dependency graph and executes deterministic exact Python passes. No native
-> module has been added; the benchmark and packaging gate below still applies.
+> Implementation note (`0.3.0a1`): RFC 0005 supersedes this RFC's native-code
+> deferral and browser allocation. The `qplanck` naming, monorepo, provider
+> separation, and namespace-collision decisions remain in force.
 
-- Status: **Proposed**
+- Status: **Accepted, partially superseded by RFC 0005**
 - Date: 2026-07-14
-- Decision owners: Unassigned pending Phase 0 review
-- Supersedes: None
+- Decision owner: QPlanck maintainer
+- Superseded by: RFC 0005 for compiler/QIR language and browser compatibility
 
 ## Summary
 
-Retain a Python-first monorepo and the `qplanck` distribution/implementation
-namespace. Introduce Rust or another native core only after published benchmarks
-identify a material bottleneck that cannot be addressed within the Python design.
+Retain a mixed Python/Rust monorepo and the `qplanck`
+distribution/implementation namespace. RFC 0005 accepts a required Rust
+compiler/QIR kernel with a Python public facade and a frozen Python oracle.
 Reserve `qcore` as a future exact import and CLI facade with mandatory ownership
 collision detection.
 
@@ -42,17 +42,18 @@ native crates and moves no production modules.
 
 | Area | Default | Rationale |
 |---|---|---|
-| Public SDK, IR, compiler, runtime | Python 3.11+ | Existing code, accessibility, typing, iteration, education |
+| Public SDK, IR dataclasses, runtime | Python 3.11+ | Existing code, accessibility, typing, iteration, education |
+| Production compiler, routing, QIR | Rust/PyO3 | Accepted mandatory native kernel under RFC 0005 |
 | Reference simulator | Python + NumPy `complex128` | Small auditable oracle and Pyodide path |
 | CLI and schemas | Python/JSON | One behavior across platforms and agent tools |
-| Labs kernel | Same Python wheel in Pyodide | Avoid second implementation |
+| Labs kernel | Remote CPython for 0.3; final 0.2 artifact for Pyodide | Native 0.3 has no JavaScript binding or supported browser runtime |
 | Provider adapters | Python packages around provider SDKs | Ecosystem compatibility and separate release cadence |
-| Native/compiler acceleration | Undecided | Requires measured need and ownership plan |
+| Native/compiler acceleration | Rust | Required; performance wording remains benchmark-gated |
 
 ## Native-code gate
 
-Rust, C++, GPU, Wasm-native modules, or another language may enter core only when
-an accepted follow-up RFC includes:
+RFC 0005 is the accepted follow-up decision and owns the native compiler gate.
+Any additional native subsystem, GPU path, or WebAssembly target still requires:
 
 1. A public benchmark with pinned versions, representative workloads, machine
    specifications, statistical treatment, and correctness checks.
@@ -64,7 +65,7 @@ an accepted follow-up RFC includes:
 5. Maintainers able to review, release, debug, and secure the new toolchain.
 6. Fallback/compatibility behavior and migration cost.
 
-No fixed speedup threshold is encoded before a benchmark exists.
+RFC 0005 defines the fixed native/oracle and competitive claim thresholds.
 
 ## Namespace decision
 
@@ -131,7 +132,7 @@ This JSON is **Proposed**. Doctor must not uninstall or mutate the environment.
 
 | Alternative | Reason not selected |
 |---|---|
-| Rust-first rewrite | No benchmarked bottleneck; would disrupt proven Python/browser path |
+| Rust-first rewrite of the entire SDK | Rejected; only the compiler/routing/QIR kernel is native |
 | Polyrepo immediately | Coordination and release overhead before ownership boundaries are proven |
 | Rename distribution to `qcore` | Name is occupied by unrelated project |
 | Quietly install top-level `qcore` from `qplanck` | Unsafe collision and confusing package ownership |
@@ -139,8 +140,8 @@ This JSON is **Proposed**. Doctor must not uninstall or mutate the environment.
 
 ## Consequences
 
-- Python remains the performance ceiling of core algorithms until evidence opens a
-  native gate; specialized external backends provide scale.
+- Rust is required for compile/routing/QIR; Python remains the public contracts,
+  local runtime, simulator, and provider-adapter layer.
 - The repo may contain several packages but cannot rely on undeclared internal
   imports.
 - Documentation must consistently distinguish QCore brand, `qplanck` current
@@ -155,4 +156,5 @@ This JSON is **Proposed**. Doctor must not uninstall or mutate the environment.
 
 ## Acceptance record
 
-Pending Phase 0 milestone review.
+Accepted for repository, naming, package-isolation, and collision policy. The
+language allocation and native/browser deferral are superseded by RFC 0005.

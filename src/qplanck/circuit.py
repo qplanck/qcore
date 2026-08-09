@@ -14,6 +14,7 @@ if TYPE_CHECKING:
     from qplanck.interop import ConversionResult
     from qplanck.qir import QIRCapabilities, QIRModule, QIRProfile
     from qplanck.results import ExecutionTrace
+    from qplanck.targets import Target
 
 
 @dataclass(frozen=True)
@@ -34,6 +35,7 @@ SUPPORTED_GATES: dict[str, GateSpec] = {
     "rz": GateSpec(qubits=1, params=1),
     "cx": GateSpec(qubits=2, params=0),
     "cz": GateSpec(qubits=2, params=0),
+    "swap": GateSpec(qubits=2, params=0),
 }
 
 
@@ -168,6 +170,9 @@ class Circuit:
     def cz(self, control: int, target: int) -> Circuit:
         return self.add(Operation("cz", (control, target)))
 
+    def swap(self, left: int, right: int) -> Circuit:
+        return self.add(Operation("swap", (left, right)))
+
     def measure(self, q: int, c: int | None = None) -> Circuit:
         q = int(q)
         cbit = len(self._ir.measurements) if c is None else int(c)
@@ -200,12 +205,17 @@ class Circuit:
 
         return Simulator("statevector").run(self, trace=True).trace
 
-    def compile(self, options: CompileOptions | None = None) -> CompiledCircuit:
+    def compile(
+        self,
+        options: CompileOptions | None = None,
+        *,
+        target: Target | None = None,
+    ) -> CompiledCircuit:
         """Run the deterministic graph compiler without mutating this circuit."""
 
         from qplanck.compiler import compile
 
-        return compile(self, options)
+        return compile(self, options, target=target)
 
     def to_qir(
         self,
@@ -272,7 +282,7 @@ class Circuit:
             )
         if any(qubit >= self.qubit_count for qubit in operation.qubits):
             raise CircuitError(f"Gate {operation.name!r} references a qubit outside this circuit.")
-        if operation.name in {"cx", "cz"} and operation.qubits[0] == operation.qubits[1]:
+        if operation.name in {"cx", "cz", "swap"} and operation.qubits[0] == operation.qubits[1]:
             raise CircuitError(f"Gate {operation.name!r} requires distinct qubits.")
         if any(isinstance(param, Parameter) for param in operation.params):
             raise UnsupportedOperationError("QCore supports numeric gate parameters only.")

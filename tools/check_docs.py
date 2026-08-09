@@ -43,6 +43,17 @@ MANDATORY_FILES = (
     "rfcs/0004-backend-interface.md",
 )
 
+RFC_STATUS_REQUIREMENTS = {
+    "rfcs/0001-qcore-charter.md": "Status: **Proposed**",
+    "rfcs/0002-language-and-repository-strategy.md": (
+        "Status: **Accepted, partially superseded by RFC 0005**"
+    ),
+    "rfcs/0003-intermediate-representation.md": "Status: **Proposed**",
+    "rfcs/0004-backend-interface.md": "Status: **Accepted and implemented for 0.3 alpha**",
+    "rfcs/0005-native-target-compiler.md": "Status: **Accepted**",
+    "rfcs/0006-amazon-braket-pulse-adapter.md": "Status: **Accepted**",
+}
+
 
 def markdown_files() -> list[Path]:
     return sorted(
@@ -115,10 +126,12 @@ def validate_structure(errors: list[str]) -> None:
         if not (ROOT / relative).is_file():
             errors.append(f"missing mandatory document: {relative}")
 
-    for relative in MANDATORY_FILES[-4:]:
+    for relative, required_status in RFC_STATUS_REQUIREMENTS.items():
         path = ROOT / relative
-        if path.is_file() and "Status: **Proposed**" not in path.read_text(encoding="utf-8"):
-            errors.append(f"RFC must remain Proposed pending review: {relative}")
+        if not path.is_file():
+            errors.append(f"missing RFC document: {relative}")
+        elif required_status not in path.read_text(encoding="utf-8"):
+            errors.append(f"RFC has unexpected decision status: {relative}")
 
 
 def validate_links(files: list[Path], errors: list[str]) -> None:

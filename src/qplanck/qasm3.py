@@ -45,7 +45,7 @@ def dumps(circuit: Circuit) -> str:
                 f"{name}({_format_float(_numeric_param(operation.params[0]))}) "
                 f"q[{operation.qubits[0]}];"
             )
-        elif name in {"cx", "cz"}:
+        elif name in {"cx", "cz", "swap"}:
             lines.append(f"{name} q[{operation.qubits[0]}], q[{operation.qubits[1]}];")
         else:
             lines.append(f"{name} q[{operation.qubits[0]}];")
@@ -261,6 +261,8 @@ def _add_gate(circuit: Circuit, name: str, params: list[float], qubits: list[int
         circuit.cx(qubits[0], qubits[1])
     elif name == "cz":
         circuit.cz(qubits[0], qubits[1])
+    elif name == "swap":
+        circuit.swap(qubits[0], qubits[1])
     else:
         raise QASMError(f"Unsupported gate {name!r}.")
 

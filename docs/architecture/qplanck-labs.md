@@ -1,14 +1,15 @@
 # QPlanck Labs Architecture
 
-> Status: Proposed  
-> First implementation: static JupyterLite/Pyodide feasibility slice
+> Status: 0.2 browser design retained for compatibility; superseded for 0.3
+> 0.3 implementation: remote CPython kernel or a final pure-Python 0.2 pin
 
 ## Recommendation
 
-**Decision:** Build the first QPlanck Labs as a static JupyterLite site running
-QCore in Pyodide, with bundled version-pinned notebooks and a client-side trace
-viewer. Do not begin with managed containers, terminals, QPU credentials,
-collaboration, billing, or a multi-tenant control plane.
+**Decision:** `qplanck 0.3` requires a native CPython wheel and does not support
+Pyodide or a WebAssembly browser runtime. Labs that need the 0.3 native compiler,
+routing, or QIR kernel must use a remote CPython 3.11-3.14 kernel with a supported wheel. A fully
+static JupyterLite lesson must remain pinned to the final pure-Python 0.2
+artifact and cannot advertise 0.3 compiler capabilities.
 
 **Verified:** [JupyterLite](https://jupyterlite.readthedocs.io/en/stable/) can be
 served as static assets without an application server, while
@@ -17,32 +18,32 @@ Package loading is constrained by browser/Wasm wheel compatibility. qBraid Lab,
 by contrast, documents managed browser environments and compute resources. See
 the [qBraid analysis](../research/qbraid-analysis.md).
 
-**Inference:** The static route is the lowest-complexity way to validate whether
-QCore's teaching, trace, and reproducibility experience is compelling before
-QPlanck accepts hosted-execution security and operations costs.
+**Inference:** Static 0.2 lessons remain useful for basic teaching and trace UX,
+while native 0.3 work requires accepting the isolation, quota, and operations
+cost of a remote kernel. The two execution modes must display their package and
+capability identities rather than silently diverging.
 
 ## Options assessment
 
 | Model | Native package compatibility | Operations burden | Isolation burden | Offline/static use | Decision |
 |---|---:|---:|---:|---:|---|
-| JupyterLite + Pyodide | Medium | Low | Low server-side; browser origin still matters | High | **Select first** |
+| JupyterLite + Pyodide pinned to 0.2 | None for 0.3 | Low | Low server-side; browser origin still matters | High | Compatibility/teaching only |
 | Browser-native custom editor/runtime | Medium | Medium | Low server-side | High | Defer until notebook workflow proves UI needs |
-| JupyterLab with remote kernels | High | High | High | Low | Defer |
+| JupyterLab with remote CPython kernels | High | High | High | Low | **Required for 0.3 Labs** |
 | Remote containers on Kubernetes | High | Very high | Very high | None | Reject initially |
 | Firecracker/microVM workers | High | Very high | Stronger primitive, still substantial platform work | None | Research for future untrusted execution |
 | Cloudflare Sandboxes | High within platform constraints | Medium/high and platform-specific | Managed boundary requiring review | None | Future feasibility option |
 | Hybrid local browser + opt-in remote | High overall | High | High on remote path | Medium | Likely long-term shape, not MVP |
 
-## Static architecture
+## 0.3 Labs architecture
 
 ```mermaid
 flowchart TB
-    HOST["Static hosting / CDN"] --> APP["JupyterLite application"]
-    HOST --> WHEEL["Pinned qplanck pure-Python wheel"]
-    HOST --> NOTE["Versioned notebooks + lesson manifests"]
+    HOST["Labs UI / notebook client"] --> NOTE["Versioned notebooks + lesson manifests"]
     HOST --> SCHEMA["IR / trace / manifest JSON schemas"]
-    APP --> WORKER["Pyodide kernel in Web Worker"]
-    WORKER --> QCORE["QCore + NumPy reference simulator"]
+    HOST --> KERNEL["Isolated remote CPython kernel"]
+    KERNEL --> WHEEL["Pinned supported qplanck native wheel"]
+    WHEEL --> QCORE["Rust compiler/QIR + Python runtime"]
     QCORE --> ART["Circuit / trace / result / manifest artifacts"]
     ART --> VIEW["Client-side trace visualization"]
     ART --> FS["Browser workspace / explicit export"]
@@ -113,9 +114,9 @@ instruction for an AI agent.
 
 ## Packaging and deployment
 
-1. Build the normal `qplanck` wheel in CI.
-2. Verify it contains no native extension and installs through `micropip` in the
-   pinned Pyodide/JupyterLite versions.
+1. Build the normal platform-specific `qplanck` native wheel in CI.
+2. Install the matching wheel into an isolated, version-pinned remote CPython
+   kernel; reject unsupported interpreter/platform combinations.
 3. Generate a lock/asset manifest with hashes for wheel, notebooks, schemas, and
    front-end bundle.
 4. Run notebook and browser smoke tests before publishing immutable versioned
@@ -131,7 +132,7 @@ architecture must remain portable.
 
 | Constraint | Control | Gate |
 |---|---|---|
-| Wasm package incompatibility | Pure-Python core, pinned NumPy/Pyodide, build smoke test | Wheel installs and examples run in clean browser |
+| Native wheel unavailable in Wasm | Remote CPython for 0.3; explicit 0.2 pin for static lessons | UI reports the execution mode and never loads 0.3 in Pyodide |
 | Main-thread blocking | Execute Python in Web Worker; budget compilation/simulation | UI remains responsive under max lesson workload |
 | Browser memory | Conservative qubit/state/trace estimates and hard limits | Over-limit work fails before allocation |
 | Persistent storage variability | Explicit artifact export/import and schema hashes | Lesson does not depend on durable browser storage |
@@ -145,7 +146,7 @@ architecture must remain portable.
 | Capability | Evidence required before implementation |
 |---|---|
 | Custom circuit editor | Notebook usability study identifies repeated circuit-authoring friction |
-| Remote kernels | Required course/research package cannot run in Pyodide and demand justifies operations |
+| Remote kernels | Required by any Labs surface that advertises qplanck 0.3 |
 | User accounts/progress sync | Academy identity and privacy model accepted |
 | Collaborative workspaces | Concrete collaboration workflow and conflict/storage model accepted |
 | Hardware submission | Runtime adapters, credential broker, spend controls, and incident response accepted |

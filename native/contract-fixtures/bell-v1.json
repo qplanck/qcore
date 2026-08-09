@@ -1,0 +1,33 @@
+{
+  "schema_version": "qplanck.native.fixture.v1",
+  "ir": {
+    "schema_version": "qplanck.ir.v0.1",
+    "qubit_count": 2,
+    "operations": [
+      {"name": "h", "qubits": [0], "params": [], "metadata": {}},
+      {"name": "cx", "qubits": [0, 1], "params": [], "metadata": {}}
+    ],
+    "measurements": [
+      {"qubit": 0, "cbit": 0, "metadata": {}},
+      {"qubit": 1, "cbit": 1, "metadata": {}}
+    ],
+    "metadata": {"name": "bell-contract"}
+  },
+  "compile": {
+    "options": {"optimization_level": 1, "angle_tolerance": 0.0},
+    "pipeline_id": "qplanck.default-o1.v1",
+    "input_ir_hash": "sha256:a0034af4cd7e02cb7894d4bb2ba56c775db0758d833e9c031ba680ea2c88d586",
+    "output_ir_hash": "sha256:a0034af4cd7e02cb7894d4bb2ba56c775db0758d833e9c031ba680ea2c88d586",
+    "pass_ids": ["validate.static", "opt.local-exact", "analyze.resources"]
+  },
+  "simulate": {
+    "shots": 8,
+    "seed": 7,
+    "counts": {"00": 6, "11": 2},
+    "measurements": ["00", "00", "11", "11", "00", "00", "00", "00"],
+    "ir_hash": "sha256:a0034af4cd7e02cb7894d4bb2ba56c775db0758d833e9c031ba680ea2c88d586",
+    "statevector_bytes": 64,
+    "peak_execution_bytes": 280,
+    "estimated_result_bytes": 216
+  }
+}

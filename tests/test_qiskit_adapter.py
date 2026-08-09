@@ -15,6 +15,14 @@ def test_qiskit_round_trip_supported_subset() -> None:
     assert restored.to_dict() == circuit.to_dict()
 
 
+def test_qiskit_swap_round_trip() -> None:
+    circuit = Circuit(2).x(0).swap(0, 1)
+
+    restored = Circuit.from_qiskit(circuit.to_qiskit())
+
+    assert restored.to_dict() == circuit.to_dict()
+
+
 def test_qiskit_rejects_unsupported_instruction() -> None:
     quantum_circuit = qiskit.QuantumCircuit(1)
     quantum_circuit.reset(0)

@@ -1,6 +1,6 @@
 # QCore System Overview
 
-> Status: Proposed architecture  
+> Status: Implemented 0.3 alpha spine; future surfaces remain labeled
 > Evidence cut-off: 2026-07-14
 
 ## Architectural correction to the master model
@@ -21,14 +21,14 @@ flowchart TB
     LAB["QPlanck Labs"] --> PM
     API --> PM
     PM --> IR["CircuitIR + diagnostics"]
-    IR --> COMP["Compiler + analyses"]
-    COMP --> CC["CompiledCircuit + CompilationTrace"]
+    IR --> COMP["Required Rust compiler + analyses"]
+    COMP --> CC["CompiledCircuit + compilation/routing traces"]
     CC --> RT["Runtime contracts"]
     RT --> LOCAL["LocalSimulator"]
     RT --> MOCK["MockBackend"]
-    RT --> ADAPT["External adapter packages (future)"]
+    RT --> ADAPT["Separate adapters (qplanck-braket first)"]
     COMP -. exchange .-> OQ["OpenQASM 3"]
-    COMP -. future lowering .-> QIR["QIR"]
+    COMP -. native lowering .-> QIR["QIR 2.0 Base Profile"]
     LOCAL --> RES["RunResult + ExperimentManifest"]
     MOCK --> RES
     ADAPT --> RES
@@ -61,15 +61,15 @@ must not execute compilers, plugins, or backends while decoding.
 
 | Subsystem | Responsibilities | Public interfaces | Dependencies / extensions | Failure and security boundary | Phase 1 test strategy |
 |---|---|---|---|---|---|
-| Programming model | Construct circuits, registers, operations, parameters, measurements; preserve source intent | `Circuit`, existing gate builders; **Proposed** `Circuit.compile` | IR and diagnostics; importer extensions | Reject invalid indices/types early; no backend/network calls | Unit, property, fluent compatibility, source-span tests |
-| Contract layer | Immutable canonical data, schema versions, diagnostics, manifests, hashes | `CircuitIR`, **Proposed** `Diagnostic`, `ExperimentManifest` | JSON/schema utilities only | Size/depth limits; no code execution during decode | Golden fixtures, fuzzing, round trips, migration tests |
-| Compiler | Validate, analyze, transform, lower, record provenance | **Proposed** `Compiler`, `Pass`, `CompiledCircuit`, `CompilationTrace` | Contract layer; explicitly registered trusted passes | Budget/time limits; deterministic ordering; plugin failures contained | Invariants, differential tests, pass replay, random circuits |
-| Runtime | Capability negotiation, options, lifecycle, result normalization | **Proposed** `Backend`, `Target`, `Job`, `ExecutionOptions`, `RunResult` | Contracts; backends implement interfaces | No credentials in core; validate target and budgets before run | Shared backend contract suite, state-machine tests |
-| Local backend | Execute supported static circuits and sample results | `Simulator` compatibility; **Proposed** `LocalSimulator` | NumPy reference engine | Memory/trace/shot budgets, numeric validation | Matrix oracles, metamorphic, seeded reproducibility |
-| Mock backend | Exercise lifecycle and deterministic failures | **Proposed** `MockBackend`, `Job` | Runtime only | No network; scripted states and errors | Contract and state transition tests |
+| Programming model | Construct circuits, operations, parameters, measurements; preserve source intent | `Circuit`, gate builders, `Circuit.compile` | IR and diagnostics; importer extensions | Reject invalid indices/types early; no backend/network calls | Unit, property, fluent compatibility tests |
+| Contract layer | Immutable canonical data, schema versions, diagnostics, manifests, hashes | `CircuitIR`, `Target`, `Layout`, `Diagnostic`, `ExperimentManifest` | JSON/schema utilities only | Size/depth limits; no code execution during decode | Golden fixtures, fuzzing, round trips, migration tests |
+| Compiler | Validate, analyze, optimize, place, route, lower, record provenance | `compile`, `CompiledCircuit`, `CompilationTrace`, `RoutingTrace` | Required Rust/PyO3 kernel | Budgets; deterministic ordering; panic translation | Invariants, native-oracle differential, routing properties, random circuits |
+| Runtime | Capability negotiation, options, lifecycle, result normalization | `Backend`, `Target`, `Job`, `ExecutionOptions`, `RunResult` | Contracts; backends implement interfaces | No credentials in core; validate target and budgets before run | Shared backend contract suite, state-machine tests |
+| Local backend | Execute supported static circuits and sample results | `Simulator` compatibility; `LocalSimulator` | Bounded local reference engine | Memory/trace/shot budgets, numeric validation | Matrix oracles, metamorphic, seeded reproducibility |
+| Mock backend | Exercise lifecycle and deterministic failures | `MockBackend`, `Job` | Runtime only | No network; scripted states and errors | Contract and state transition tests |
 | Serialization/interchange | Import/export supported external syntax with loss reports | Existing QASM/Qiskit methods; future serializers | Optional parsers/adapters | Parse untrusted data under strict limits; no implicit plugin loading | Corpus, fuzz, differential, lossy-boundary tests |
 | CLI | Human and machine entry points | Existing `qplanck`; future exact `qcore` facade | Public APIs only | Safe paths, atomic writes, no secret echo; ownership check | Process-level smoke and JSON contract tests |
-| Labs | Static notebooks, trace views, lesson assets | Browser UI, notebook APIs | Built wheel, schemas, static assets | Browser origin/package limits; no hosted secrets | Playwright, notebook, Wasm memory, artifact parity |
+| Labs | Notebooks, trace views, lesson assets | Browser UI, remote-kernel APIs | Native wheel, schemas, remote CPython; 0.2 pin for static use | Hosted-kernel isolation; no provider secrets by default | Notebook, isolation, budgets, artifact parity |
 | Agent package | Bounded local tools and policy | JSON-schema tools; future MCP server | Public APIs/CLI, never compiler internals | Prompt injection, permissions, budgets, audit logs | Schema, adversarial input, policy, dry-run tests |
 | Provider adapters | Translate capabilities, jobs, results | Separate packages implementing `Backend` | Provider SDK and runtime contracts | Credentials, network, retries, raw payload isolation | Mock provider, contract, sandbox integration tests |
 
@@ -110,9 +110,9 @@ software/target context required to interpret them.
 | `ExperimentManifest` | Reproducibility record tying source, compile, target, execution, environment, and result identities together. |
 | Adapter | Separately versioned integration translating an external SDK/provider while preserving capability and loss information. |
 
-## Proposed public flow
+## Implemented public flow
 
-The following example is **Proposed** and is not implemented in Phase 0:
+The following local flow is implemented:
 
 ```python
 from qplanck import Circuit

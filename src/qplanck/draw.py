@@ -20,6 +20,8 @@ def _operation_labels(operation: Operation) -> dict[int, str]:
     if name in {"cx", "cz"}:
         target_label = "X" if name == "cx" else "Z"
         return {operation.qubits[0]: "*", operation.qubits[1]: target_label}
+    if name == "swap":
+        return {operation.qubits[0]: "x", operation.qubits[1]: "x"}
     return {operation.qubits[0]: name.upper()}
 
 

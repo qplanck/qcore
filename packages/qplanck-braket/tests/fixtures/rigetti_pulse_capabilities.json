@@ -1,0 +1,92 @@
+{
+  "braketSchemaHeader": {
+    "name": "braket.device_schema.rigetti.rigetti_device_capabilities",
+    "version": "2"
+  },
+  "paradigm": {
+    "qubitCount": 2,
+    "nativeGateSet": ["rx", "cz"],
+    "connectivity": {
+      "fullyConnected": false,
+      "connectivityGraph": {"0": ["1"], "1": ["0"]}
+    }
+  },
+  "action": {
+    "braket.ir.openqasm.program": {
+      "supportedOperations": ["x", "rx", "cnot", "cz"],
+      "supportedResultTypes": [{"name": "Sample", "minShots": 1, "maxShots": 10000}]
+    }
+  },
+  "pulse": {
+    "braketSchemaHeader": {
+      "name": "braket.device_schema.pulse.pulse_device_action_properties",
+      "version": "1"
+    },
+    "supportedQhpTemplateWaveforms": {
+      "constant": {"functionName": "constant"},
+      "gaussian": {"functionName": "gaussian"}
+    },
+    "ports": {
+      "q0_rf": {
+        "portId": "q0_rf",
+        "direction": "tx",
+        "portType": "rf",
+        "dt": 1e-9,
+        "qubitMappings": [0]
+      },
+      "q1_rf": {
+        "portId": "q1_rf",
+        "direction": "tx",
+        "portType": "rf",
+        "dt": 1e-9,
+        "qubitMappings": [1]
+      },
+      "q0_rx": {
+        "portId": "q0_rx",
+        "direction": "rx",
+        "portType": "capture",
+        "dt": 1e-9,
+        "qubitMappings": [0]
+      }
+    },
+    "frames": {
+      "q0_drive": {
+        "frameId": "q0_drive",
+        "portId": "q0_rf",
+        "frequency": 5000000000.0,
+        "phase": 0.0,
+        "qubitMappings": [0]
+      },
+      "q1_drive": {
+        "frameId": "q1_drive",
+        "portId": "q1_rf",
+        "frequency": 5100000000.0,
+        "phase": 0.0,
+        "qubitMappings": [1]
+      },
+      "q0_readout": {
+        "frameId": "q0_readout",
+        "portId": "q0_rx",
+        "frequency": 7000000000.0,
+        "phase": 0.0,
+        "qubitMappings": [0]
+      }
+    },
+    "supportedFunctions": {
+      "play": {"functionName": "play"},
+      "shift_phase": {"functionName": "shift_phase"},
+      "set_phase": {"functionName": "set_phase"},
+      "shift_frequency": {"functionName": "shift_frequency"},
+      "set_frequency": {"functionName": "set_frequency"},
+      "capture_v0": {"functionName": "capture_v0"}
+    },
+    "supportsLocalPulseElements": false,
+    "supportsDynamicFrames": false,
+    "supportsNonNativeGatesWithPulses": false,
+    "validationParameters": {
+      "MAX_AMPLITUDE": 1.0,
+      "PERMITTED_FREQUENCY_DIFFERENCE": 400000000.0
+    },
+    "nativeGateCalibrationsRef": "https://example.invalid/calibrations.json?X-Amz-Signature=secret"
+  }
+}

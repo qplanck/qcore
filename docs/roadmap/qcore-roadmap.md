@@ -1,10 +1,34 @@
 # QCore Roadmap
 
-**Implementation update (`0.2.0a1`):** a bounded QIR base-profile exporter and
-provider-neutral pulse/calibration model were pulled forward as experimental
-representation boundaries. This does not pull forward a QIR runtime, provider
-execution, OpenPulse conformance, or native compiler. See the
-[current standards contract](../sdk-standards.md).
+**Implementation update (`0.3.0a1`):** the accepted 0.3 phase pulls forward a
+required Rust graph/QIR kernel, deterministic O2 target placement/routing/basis
+lowering, generic runtime/job contracts, and a separate Amazon Braket pulse
+adapter. This supersedes RFC 0002's native deferral and the 0.2 Pyodide-first
+assumption. It does not pull forward arbitrary QIR, dynamic circuits, universal
+OpenPulse, arbitrary acquisition, additional providers, or a blanket performance
+claim. See the [current standards contract](../sdk-standards.md).
+
+## 0.3 native compiler and Braket adapter phase
+
+- Freeze and profile the Python O0/O1 compiler as a non-production oracle.
+- Ship a required `abi3-py311` Rust/PyO3 compiler and QIR kernel with no Python
+  production fallback or supported WebAssembly/browser binding.
+- Implement deterministic O2 topology routing, SWAP evidence, exact basis
+  lowering, final-layout measurement mapping, and versioned target artifacts.
+- Implement generic backend/job/manifests and offline-test the separately
+  versioned `qplanck-braket` pulse subset.
+- Publish raw correctness-gated benchmarks. Permit a named superiority claim
+  only when the machine-checked runtime, quality, interval, correctness, and
+  timeout thresholds pass.
+- Rehearse `qplanck 0.3.0a1` and `qplanck-braket 0.1.0a1` on TestPyPI. Production
+  core upload is a separate action; production adapter upload remains blocked
+  until the single protected Braket smoke succeeds.
+
+This phase is implemented against accepted
+[RFC 0005](../../rfcs/0005-native-target-compiler.md) and
+[RFC 0006](../../rfcs/0006-amazon-braket-pulse-adapter.md). The older phase
+catalogue below is retained as planning history where its exclusions conflict
+with the accepted acceleration.
 
 > Status: Proposed  
 > Planning horizon: Phase 0 through three years

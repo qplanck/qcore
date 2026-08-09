@@ -84,6 +84,13 @@ def _doctor() -> int:
     print(f"  smoke test counts: {result.counts}")
     print("  trace: ok" if result.trace is not None else "  trace: failed")
     print(f"  compiler: {compiled.trace.pipeline_id}")
+    print(
+        "  native kernel: "
+        f"{compiled.native_implementation['name']} "
+        f"{compiled.native_implementation['version']} "
+        f"({compiled.native_implementation['abi_version']}; "
+        f"Rust {compiled.native_implementation['rust_version']})"
+    )
     print(f"  qir: {qir_module.manifest.qir_version} {qir_module.profile.value}")
     print(f"  pulse schema: {pulse_program.schema_version}")
     return 0 if result.trace is not None else 1
