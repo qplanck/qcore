@@ -1,16 +1,17 @@
 # RFC 0004: Backend and Runtime Interface
 
-- Status: **Proposed**
+- Status: **Accepted and implemented for 0.3 alpha**
 - Date: 2026-07-14
-- Decision owners: Unassigned pending Phase 0 review
+- Decision owner: QPlanck maintainer
 - Supersedes: None
 
 ## Summary
 
 Adopt typed `Backend`, `Target`, `LocalSimulator`, `MockBackend`, `Job`,
 `RunResult`, `ExecutionOptions`, and `ExperimentManifest` contracts. Phase 1
-implements local and mock backends only. Preserve the current `Simulator` API
-throughout v0.x as a compatibility facade.
+implements local and mock backends in core and permits provider implementations
+only in separate packages. Preserve the current `Simulator` API throughout v0.x
+as a compatibility facade. RFC 0006 is the first adapter implementation.
 
 ## Motivation
 
@@ -32,8 +33,10 @@ Job.cancel() -> bool
 Job.result(timeout) -> RunResult
 ```
 
-These signatures are **Proposed**. Exact typing and convenience keywords may be
-refined compatibly during implementation.
+These signatures describe the accepted behavior. The implemented Python
+protocols use keyword-only execution options and immutable manifest contracts;
+provider adapters may narrow the accepted program type (for example,
+`CalibratedCircuit`) without pretending every backend accepts every program.
 
 ## Target
 
@@ -79,7 +82,7 @@ guarantee. Result timeout does not imply cancellation.
 The full proposed data contract is in
 [runtime and backends](../docs/architecture/runtime-and-backends.md).
 
-## Phase 1 implementations
+## Core implementations
 
 ### LocalSimulator
 
@@ -96,17 +99,20 @@ The full proposed data contract is in
 - No network, credentials, sleeping, or wall-clock dependence.
 - Shared backend contract tests.
 
-## Deferred protocols
+## Provider extension and deferred protocols
 
 - `Session` is optional and provider-defined; not all backends emulate it.
 - `Sampler` and `Estimator` are future optional capabilities.
 - Streaming, partial results, queues, and remote cancellation await real adapter
   evidence.
-- Provider backends ship in separate distributions.
+- Provider backends ship in separate distributions. `qplanck-braket` implements
+  the first pulse-specific adapter under RFC 0006.
 
 ## Security
 
-- No provider credentials, network calls, or billable submissions in Phase 1.
+- Core has no provider credentials, network calls, or billable submissions.
+- Provider packages use their SDK's ambient credential chain; secrets never enter
+  QCore options, manifests, diagnostics, or serialized artifacts.
 - Resource budgets are validated before state allocation/execution.
 - Plugin backends are trusted in-process code unless a future isolation protocol is
   explicitly used.
@@ -144,7 +150,7 @@ tests; mock tests enumerate every transition.
 - More data types and contract tests are required before first provider support.
 - Local and mock behavior become meaningful specifications rather than demos.
 - Provider-specific richness is preserved through capabilities and namespaces.
-- Remote execution is intentionally delayed.
+- Provider release and execution claims have independent protected evidence gates.
 
 ## Open questions
 
@@ -155,4 +161,6 @@ tests; mock tests enumerate every transition.
 
 ## Acceptance record
 
-Pending Phase 0 milestone review.
+Accepted for the 0.3 alpha. The shared local/mock contract suite is the baseline
+for providers; RFC 0006 adds snapshot, spend, retry, and credential constraints
+for Amazon Braket.

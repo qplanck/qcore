@@ -25,14 +25,21 @@ def test_gates_after_measurement_are_rejected() -> None:
 
 
 def test_validation_rejects_bad_operations() -> None:
-    with pytest.raises(UnsupportedOperationError):
-        Circuit(1).add(Operation("swap", (0, 1)))
+    with pytest.raises(CircuitError):
+        Circuit(1).swap(0, 1)
 
     with pytest.raises(CircuitError):
         Circuit(1).cx(0, 0)
 
     with pytest.raises(CircuitError):
         Circuit(1).h(2)
+
+
+def test_swap_is_supported_across_builder_and_drawer() -> None:
+    circuit = Circuit(2).add(gates.SWAP(0, 1))
+
+    assert circuit.operations == (Operation("swap", (0, 1)),)
+    assert circuit.draw().count("x") == 2
 
 
 def test_measurement_validation() -> None:

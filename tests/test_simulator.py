@@ -46,6 +46,13 @@ def test_ghz_state_probabilities() -> None:
     assert sum(probabilities.values()) == pytest.approx(1.0)
 
 
+def test_swap_exchanges_qubit_states() -> None:
+    probabilities = Simulator().probabilities(Circuit(2).x(0).swap(0, 1)).probabilities
+
+    assert probabilities["10"] == pytest.approx(1.0)
+    assert probabilities["01"] == pytest.approx(0.0)
+
+
 def test_rotations() -> None:
     circuit = Circuit(1).rx(math.pi, 0)
     probabilities = Simulator().probabilities(circuit).probabilities

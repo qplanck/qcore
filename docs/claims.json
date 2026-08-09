@@ -1,0 +1,53 @@
+{
+  "schema_version": "qplanck.claims.v0.1",
+  "claims": [
+    {
+      "id": "planner-vertical-slice",
+      "status": "offline-verified",
+      "allowed_wording": "QCore has an offline, explainable planning research-kernel vertical slice. One versioned synthetic fixture showed an improvement under its declared proxy; a separate public 15-pair development cohort passed 255 declared exact-small candidate checks and 45 offline compiler-reexecution replays, with mixed results against the stronger same-attempt Qiskit baseline. Neither result is the master-specification v0.1 gate.",
+      "gate": "focused planner/replay/adapter tests plus the versioned smoke and development artifacts; the master-specification gate remains separate"
+    },
+    {
+      "id": "planner-v0.1-go",
+      "status": "gated",
+      "allowed_wording": null,
+      "gate": "the master-spec fair equal-budget baselines, locked held-out cohort, correctness and replay floors, complete reporting, falsification tests, and independent review"
+    },
+    {
+      "id": "native-compiler",
+      "status": "implementation-in-progress",
+      "allowed_wording": "QCore 0.3 uses a required Rust graph compiler and QIR kernel.",
+      "gate": "native differential, performance, wheel, and release checks"
+    },
+    {
+      "id": "target-routing",
+      "status": "implementation-in-progress",
+      "allowed_wording": "QCore provides deterministic target-aware placement, routing, SWAP insertion, and exact basis lowering.",
+      "gate": "routing invariants, differential tests, and native parity"
+    },
+    {
+      "id": "braket-offline",
+      "status": "offline-verified",
+      "allowed_wording": "The qplanck-braket adapter lowers the documented QCore pulse subset against captured Braket capability contracts.",
+      "gate": "adapter unit, fixture, packaging, and redaction tests"
+    },
+    {
+      "id": "braket-hardware",
+      "status": "gated",
+      "allowed_wording": null,
+      "gate": "one protected, budget-capped live task with ambient AWS credentials"
+    },
+    {
+      "id": "competitive-performance",
+      "status": "gated",
+      "allowed_wording": null,
+      "gate": "published corpus: runtime ratio <0.8, added-2Q ratio <=1.05, 95% CI excludes parity, no correctness/timeout deficit"
+    },
+    {
+      "id": "browser-support",
+      "status": "unsupported",
+      "allowed_wording": "QCore 0.3 requires a native CPython wheel and does not support Pyodide or WebAssembly; it has no JavaScript binding, npm artifact, or browser runtime.",
+      "gate": "a future accepted browser RFC, JavaScript binding, conformance suite, worker isolation, npm release, and browser matrix"
+    }
+  ]
+}

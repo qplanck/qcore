@@ -1,9 +1,11 @@
 # QCore Initial Threat Model
 
-**Implementation update (`0.2.0a1`):** QIR export and local pulse/calibration JSON
-are now in scope. They do not execute external tools or contact providers. The
-statevector simulator now performs allocation preflight and IR numeric values
-reject NaN/infinity; parser-wide byte/depth limits remain release-hardening work.
+**Implementation update (`0.3.0a1`):** the required Rust/PyO3 compiler and QIR
+kernel, target routing artifacts, runtime/job contracts, and separately packaged
+Braket pulse adapter are in scope. The adapter uses only the ambient AWS SDK
+credential chain, hashes immutable capability/calibration snapshots, blocks
+snapshot drift, and makes no blind retry. No credentials are currently available,
+so the protected live task and provider-execution claim remain gated.
 
 > Status: Proposed Phase 0 baseline  
 > Scope: local SDK, CLI, static Labs, future plugins/agents/adapters
@@ -49,12 +51,13 @@ reject NaN/infinity; parser-wide byte/depth limits remain release-hardening work
 ```mermaid
 flowchart LR
     INPUT["Untrusted QASM / JSON / notebooks"] --> PARSE["Bounded parsers + schema validation"]
-    PARSE --> CORE["Trusted QCore process"]
-    PLUG["Installed plugin code"] -->|"explicit trust / future isolation"| CORE
-    CORE --> FS["Workspace artifacts"]
+    PARSE --> PY["Trusted QCore Python process"]
+    PY --> NATIVE["Required Rust/PyO3 compiler boundary"]
+    PLUG["Installed plugin code"] -->|"explicit trust / future isolation"| PY
+    PY --> FS["Workspace artifacts"]
     AGENT["LLM / MCP client"] --> POLICY["Agent policy boundary"]
-    POLICY --> CORE
-    CORE --> ADAPTER["Future provider adapter"]
+    POLICY --> PY
+    PY --> ADAPTER["Separate qplanck-braket package"]
     ADAPTER --> NET["Provider / network"]
     SECRET["Credential broker / provider SDK"] --> ADAPTER
 ```
@@ -91,6 +94,8 @@ probability claims.
 | SEC-020 | Name collision imports unrelated `qcore` package | 1/facade | High if facade attempted | High | Keep `qplanck`; future `doctor` verifies distribution owner/path/version before facade | User environments may be compromised already; fail closed and explain remediation |
 | SEC-021 | Untrusted QIR export identifiers inject malformed LLVM text or unsupported QIS | 1/5 | Medium | High | Validate entry-point grammar, fixed labels, allowlisted gate lowering, explicit QIS capabilities, LLVM/PyQIR fixtures | Generated text still requires independent validation before external execution |
 | SEC-022 | Oversized or invalid pulse/calibration schedules exhaust resources or misrepresent target validity | 1/5 | Medium | High | Finite/bounded values, immutable typed channels, overlap/alignment/target validation, JSON-only decoding, no core hardware transport | Provider mapping and input-size budgets require separate adapter/release review |
+| SEC-023 | Native parser/compiler panic, unchecked allocation, or Python/Rust schema drift crashes the process or changes semantics | 2/5 | Medium | Critical | Versioned byte envelopes, input/resource validation, panic-to-`NativeCompilerError`, Rust/property/fuzz/differential tests, locked dependencies | In-process native memory-safety bugs can still terminate the host; release requires toolchain and wheel checks |
+| SEC-024 | Capability/calibration changes between compile and Braket submission | 4/5 | Medium | Critical | Refresh and hash snapshots before compilation/submission; bind `CalibratedCircuit` to target and pulse snapshot identities; reject drift | Provider state may change after accepted submission and is recorded as task evidence |
 
 ## Phase 1 mandatory controls
 
@@ -137,12 +142,14 @@ Kubernetes or a sandbox vendor alone does not satisfy this gate.
 - **Accepted:** The NumPy reference simulator is not hardened for hostile shared
   multi-tenant execution. It is protected by local limits only.
 - **Accepted:** Content hashes establish identity, not authenticity.
-- **Accepted:** No provider credentials or remote submissions exist in Phase 1,
-  removing those risks rather than pretending to solve them.
+- **Accepted:** The Braket adapter is installed Python code with host authority.
+  Core never accepts credentials; the adapter relies on the ambient AWS SDK chain.
+- **Accepted:** Offline fixtures do not prove provider execution. Production
+  adapter publication and that claim remain blocked until the protected task.
 
 ## Review triggers
 
 Re-run this threat model before enabling any remote backend, hosted kernel,
 third-party automatic plugin load, agent network tool, arbitrary notebook package,
-new serialization format, native extension, OpenPulse/QIR external tool execution,
-provider pulse mapping, or public artifact-sharing service.
+new serialization format, new native ABI/schema, OpenPulse/QIR external tool
+execution, additional provider pulse mapping, or public artifact-sharing service.

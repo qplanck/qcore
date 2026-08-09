@@ -1,11 +1,13 @@
 # QCore Positioning and Product Strategy
 
-**Implementation update (`0.2.0a1`):** the deterministic compiler foundation,
-loss reports, experimental QIR base-profile exporter, and experimental
-hardware-neutral pulse/calibration schema now exist. The native accelerator and
-provider pulse execution remain gated. The
-[SDK standards contract](../sdk-standards.md) is authoritative for current
-capability claims.
+**Implementation update (`0.3.0a1`):** the deterministic compiler foundation,
+loss reports, QIR base-profile exporter, and hardware-neutral pulse/calibration
+schema are joined by a required Rust graph/QIR kernel, deterministic topology
+routing and exact basis lowering, generic runtime/job contracts, and an
+offline-tested separate Braket pulse adapter. Claims about speed superiority,
+complete QIR, or live provider execution remain gated. The
+[SDK standards contract](../sdk-standards.md) and
+[claim matrix](../claims.md) are authoritative.
 
 > Status: Proposed for Phase 0 review  
 > Evidence cut-off: 2026-07-14

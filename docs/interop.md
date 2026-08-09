@@ -1,6 +1,6 @@
 # Interoperability
 
-QCore `0.2.0a1` treats immutable `CircuitIR` as the source of truth and uses
+QCore `0.3.0a1` treats immutable `CircuitIR` as the source of truth and uses
 external standards at explicit conversion or lowering boundaries. Each adapter
 supports a documented semantic subset; unsupported features fail instead of
 being guessed or silently decomposed.
@@ -8,8 +8,8 @@ being guessed or silently decomposed.
 ## Supported circuit subset
 
 Single-qubit gates are `h`, `x`, `y`, `z`, `s`, `t`, `rx(theta)`, `ry(theta)`,
-and `rz(theta)`. Two-qubit gates are `cx(control, target)` and
-`cz(control, target)`. Parameters must be finite numeric values. Measurements
+and `rz(theta)`. Two-qubit gates are `cx(control, target)`,
+`cz(control, target)`, and `swap(a, b)`. Parameters must be finite numeric values. Measurements
 are terminal with unique qubit-to-classical-bit mappings.
 
 ## Fidelity reports
@@ -72,7 +72,7 @@ The adapter converts directly between a Qiskit `QuantumCircuit` and `CircuitIR`;
 it does not route through Cirq or OpenQASM. Supported gates and measurement
 mappings are retained. Barriers, resets, conditions, custom gates, symbolic
 parameter expressions, and other unsupported instructions raise `InteropError`.
-The `0.2.0a1` package declares Qiskit `>=1.0,<3`; release CI currently exercises
+The `0.3.0a1` package declares Qiskit `>=1.0,<3`; release CI currently exercises
 the latest available compatible Qiskit in that range.
 
 `to_qiskit_with_report()` records any QCore metadata that cannot be mapped. A
@@ -95,7 +95,11 @@ print(module.manifest.to_dict())
 
 The manifest records the declared profile/version, entry point, required qubit
 and result counts, required QIS calls, dense QIR result allocation, classical-bit
-mapping, and source operation mapping. `QIRCapabilities` can restrict QIS and
+mapping, source operation mapping, and—when a `CompiledCircuit` is supplied—the
+target, compiled artifact, compiler trace, and routing provenance identities.
+The embedded compiler map composes optimized source-operation or routing-step
+origins through routed and final-operation indices to every emitted QIS call.
+SWAP expands exactly to three CNOT calls. `QIRCapabilities` can restrict QIS and
 resource limits before generation.
 
 `to_qir_with_report()` additionally reports QCore metadata not encoded in the
@@ -123,9 +127,22 @@ not convert a gate circuit implicitly and does not claim OpenPulse source
 compatibility. See the [standards contract](sdk-standards.md) and
 [architecture](architecture.md) for the exact boundary.
 
+## Target compilation
+
+OpenQASM and Qiskit conversion preserve supported source semantics directly.
+They do not silently route through another framework. Target mapping is an
+explicit O2 compile step over QCore IR. Its `RoutingTrace` records placement
+trials, abstract inserted SWAPs, selected layout, remapped measurements, exact
+basis expansion, and target hash so routing overhead is observable rather than
+misreported as conversion loss.
+
+User-authored SWAP remains a semantic circuit gate. Compiler-inserted SWAP is
+also a semantic operation in routed IR, but additionally updates the compiler's
+logical-to-physical layout before final native-basis lowering.
+
 ## Deferred adapters
 
-PennyLane, Cirq, provider runtimes, OpenPulse source, QIR import, and other
+PennyLane, Cirq, additional provider runtimes, OpenPulse source, QIR import, and other
 conversion paths remain deferred. New adapters must define a supported feature
 matrix, loss policy, version range, conformance fixtures, and security/resource
 limits before entering the package.

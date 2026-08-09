@@ -1,5 +1,5 @@
 import json
-from dataclasses import FrozenInstanceError
+from dataclasses import FrozenInstanceError, replace
 from math import pi
 
 import numpy as np
@@ -15,6 +15,7 @@ from qplanck.compiler import (
     compile,
 )
 from qplanck.errors import CircuitError
+from qplanck.targets import InstructionSupport, Layout, Target, Topology
 
 
 def test_dependency_graph_tracks_only_direct_qubit_conflicts() -> None:
@@ -48,7 +49,7 @@ def test_dependency_graph_is_canonical_and_immutable() -> None:
         DependencyGraph(operation_count=2, edges=((1, 0),))
 
 
-@pytest.mark.parametrize("gate", ["h", "x", "y", "z", "cx", "cz"])
+@pytest.mark.parametrize("gate", ["h", "x", "y", "z", "cx", "cz", "swap"])
 def test_compile_cancels_adjacent_self_inverse_gates(gate: str) -> None:
     qubits = (0,) if gate in {"h", "x", "y", "z"} else (0, 1)
     ir = CircuitIR(2, operations=(Operation(gate, qubits), Operation(gate, qubits)))
@@ -218,12 +219,20 @@ def test_compilation_artifacts_have_deterministic_json() -> None:
     trace_payload = json.loads(compiled.trace.to_json())
     artifact_payload = json.loads(compiled.to_json())
 
-    assert trace_payload["schema_version"] == "qplanck.compilation.trace.v0.1"
+    assert trace_payload["schema_version"] == "qplanck.compilation.trace.v0.2"
     assert trace_payload["events"][1]["rewrites"][0]["rule"] == "self-inverse-adjacent"
-    assert artifact_payload["schema_version"] == "qplanck.compiled.v0.1"
+    assert artifact_payload["schema_version"] == "qplanck.compiled.v0.2"
     assert artifact_payload["source_graph"]["operation_count"] == 3
     assert artifact_payload["compiled_graph"]["operation_count"] == 1
     assert compiled.to_json() == compiled.to_json()
+    assert compiled.trace.content_hash.startswith("sha256:")
+
+    different_build = replace(
+        compiled,
+        native_implementation={"name": "another-conforming-build", "version": "999"},
+    )
+    assert different_build.to_dict() != compiled.to_dict()
+    assert different_build.content_hash == compiled.content_hash
 
 
 def test_compilation_is_idempotent() -> None:
@@ -260,6 +269,62 @@ def test_disjoint_graph_rewrites_preserve_reference_statevector() -> None:
     assert np.allclose(before, after, rtol=1e-12, atol=1e-12)
 
 
+def _line_target(qubits: int) -> Target:
+    return Target(
+        "compiler-line",
+        Topology.line(qubits),
+        (
+            InstructionSupport("h", 1),
+            InstructionSupport("x", 1),
+            InstructionSupport("rz", 1),
+            InstructionSupport("cx", 2),
+        ),
+    )
+
+
+def test_level_two_routes_and_records_target_layout_and_metrics() -> None:
+    source = Circuit(3).h(0).cx(0, 2).measure(0, 0).measure(2, 1)
+    options = CompileOptions(
+        optimization_level=2,
+        initial_layout=Layout.identity(3),
+        placement_trials=1,
+    )
+
+    compiled = compile(source, options, target=_line_target(3))
+
+    assert compiled.target_hash == _line_target(3).content_hash
+    assert compiled.routed_ir is not None
+    assert compiled.routed_metrics is not None
+    assert compiled.initial_layout == Layout.identity(3)
+    assert compiled.final_layout == Layout((1, 0, 2))
+    assert compiled.routing_trace is not None
+    assert len(compiled.routing_trace.steps) == 1
+    assert all(
+        abs(operation.qubits[0] - operation.qubits[1]) == 1
+        for operation in compiled.operations
+        if len(operation.qubits) == 2
+    )
+    assert [item.id for item in compiled.trace.passes] == [
+        "validate.static",
+        "opt.local-exact",
+        "route.target-deterministic",
+        "lower.target-basis-exact",
+        "analyze.resources",
+    ]
+    artifact = json.loads(compiled.to_json())
+    assert artifact["target_hash"] == compiled.target_hash
+    assert artifact["routing_trace"]["measurement_map"][0]["classical_bit"] == 0
+
+
+def test_level_two_requires_target_and_routing_options_require_level_two() -> None:
+    with pytest.raises(ValueError, match="requires a target"):
+        compile(Circuit(2).cx(0, 1), CompileOptions(optimization_level=2))
+    with pytest.raises(ValueError, match="only with optimization_level=2"):
+        compile(Circuit(2).cx(0, 1), target=_line_target(2))
+    with pytest.raises(ValueError, match="Routing options require"):
+        CompileOptions(optimization_level=1, routing_seed=4)
+
+
 @pytest.mark.parametrize(
     "options",
     [
@@ -282,7 +347,7 @@ def test_compile_rejects_non_finite_and_symbolic_parameters() -> None:
 
 def test_compile_options_and_input_types_are_checked() -> None:
     with pytest.raises(ValueError, match="optimization_level"):
-        CompileOptions(optimization_level=2)
+        CompileOptions(optimization_level=3)
     with pytest.raises(ValueError, match="angle_tolerance"):
         CompileOptions(angle_tolerance=float("inf"))
     with pytest.raises(TypeError, match="CircuitIR"):

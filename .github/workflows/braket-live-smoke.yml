@@ -1,0 +1,78 @@
+name: Protected Braket pulse smoke
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: "Type I_UNDERSTAND_THIS_RUNS_ONE_PAID_BRAKET_QPU_TASK"
+        required: true
+        type: string
+      device_arn:
+        description: "Online Rigetti Cepheus QPU ARN"
+        required: true
+        default: "arn:aws:braket:us-west-1::device/qpu/rigetti/Cepheus-1-108Q"
+        type: string
+      estimated_cost_usd:
+        description: "Conservative estimate; must fit the existing <= $10 spending limit"
+        required: true
+        default: "1.00"
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: protected-braket-pulse-smoke
+  cancel-in-progress: false
+
+jobs:
+  paid-qpu-smoke:
+    if: ${{ inputs.confirmation == 'I_UNDERSTAND_THIS_RUNS_ONE_PAID_BRAKET_QPU_TASK' }}
+    environment: braket-live
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.85.0"
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_BRAKET_ROLE_ARN }}
+          aws-region: us-west-1
+
+      - name: Build pinned QPlanck packages
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install .
+          python -m pip install ./packages/qplanck-braket
+
+      - name: Submit exactly one protected 10-shot task
+        env:
+          AMZN_BRAKET_TASK_RESULTS_S3_URI: ${{ vars.BRAKET_RESULTS_S3_URI }}
+          BRAKET_DEVICE_ARN: ${{ inputs.device_arn }}
+          BRAKET_CONFIRMATION: ${{ inputs.confirmation }}
+          BRAKET_ESTIMATED_COST_USD: ${{ inputs.estimated_cost_usd }}
+        run: |
+          python packages/qplanck-braket/scripts/live_smoke.py \
+            --device-arn "$BRAKET_DEVICE_ARN" \
+            --region us-west-1 \
+            --confirmation "$BRAKET_CONFIRMATION" \
+            --estimated-cost-usd "$BRAKET_ESTIMATED_COST_USD" \
+            --max-cost-usd '10.00'
+
+      - name: Upload redacted execution evidence
+        if: ${{ always() && hashFiles('braket-live-result.json') != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: braket-live-smoke-evidence
+          path: braket-live-result.json
+          if-no-files-found: error
+          retention-days: 30

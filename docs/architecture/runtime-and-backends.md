@@ -1,6 +1,6 @@
 # Runtime and Backend Architecture
 
-> Status: Proposed  
+> Status: Implemented alpha core; provider extensions remain capability-specific
 > Governing decision: [RFC 0004](../../rfcs/0004-backend-interface.md)
 
 ## Scope
@@ -10,13 +10,14 @@ implementations. It owns capability negotiation, options, lifecycle, normalized
 results, diagnostics, and reproducibility metadata. It does not own provider
 credentials, compilation algorithms, notebook isolation, or cloud scheduling.
 
-**Decision:** Phase 1 implements `LocalSimulator` and `MockBackend` only. Existing
-`Simulator("statevector")` remains supported throughout v0.x and becomes a
-compatibility facade over `LocalSimulator`.
+**Decision:** Core implements `LocalSimulator` and `MockBackend`. Existing
+`Simulator("statevector")` remains supported throughout v0.x as a compatibility
+facade. Provider transports stay in separately versioned packages;
+`qplanck-braket` is the first adapter and accepts calibrated circuits only.
 
 ## Core types
 
-| Type | Responsibility | Identity / mutability | Phase 1 |
+| Type | Responsibility | Identity / mutability | 0.3 status |
 |---|---|---|---|
 | `Backend` | Capabilities and synchronous/asynchronous execution contract | Implementation ID + version; object may hold local resources | Protocol + two implementations |
 | `Target` | Immutable snapshot of gates, topology, limits, timing, and feature support | Canonical content hash | Implement static circuit subset |
@@ -31,9 +32,9 @@ compatibility facade over `LocalSimulator`.
 | `Sampler` / `Estimator` | Workload-specific primitive interfaces | Optional capability | Reserve; do not force onto all backends |
 | `Experiment` | User-level collection of source, compile, execution, and annotations | Manifest-backed higher-level object | Phase 2 |
 
-## Proposed interfaces
+## Implemented interfaces
 
-The following Python is **Proposed**:
+The public protocols are:
 
 ```python
 class Backend(Protocol):
@@ -101,7 +102,7 @@ user consent, never silently between compile and run.
 
 ## Execution options
 
-The following shape is **Proposed**:
+The implemented shape is:
 
 ```python
 ExecutionOptions(
@@ -127,7 +128,7 @@ ExecutionOptions(
 
 ## Measurement and result semantics
 
-**Decision:** Phase 1 adopts these proposed semantics before runtime extraction:
+**Decision:** Core adopts these semantics:
 
 1. Terminal measurements map selected qubits to a dense, unique classical range.
 2. `RunResult.counts` and shot memory use `c[m-1]...c[0]` when explicit
@@ -142,8 +143,8 @@ ExecutionOptions(
 6. A provider result that cannot be normalized losslessly retains a typed raw
    payload reference and emits a loss diagnostic.
 
-**Open Question:** This measurement proposal requires explicit approval because
-the current implementation samples full qubit keys without applying mappings.
+The local backend applies explicit qubit-to-classical-bit mappings. Provider
+adapters must preserve or explicitly reject the same contract.
 
 ## Job state machine
 
@@ -175,7 +176,7 @@ stateDiagram-v2
 
 ## RunResult
 
-The existing fields remain. Proposed additions are compatible:
+The existing fields remain and the additions are compatible:
 
 ```text
 RunResult
@@ -183,10 +184,10 @@ RunResult
 ├── measurements: tuple[str, ...]
 ├── probabilities: Mapping[str, float]
 ├── metadata: Mapping[str, JsonValue]
-├── diagnostics: tuple[Diagnostic, ...]       # proposed
+├── diagnostics: tuple[Diagnostic, ...]
 ├── execution_trace: ExecutionTrace | None    # current `trace` alias retained
-├── manifest: ExperimentManifest              # proposed
-└── raw_result: ExternalArtifactRef | None     # proposed, adapter-only
+├── manifest: ExperimentManifest | None
+└── raw_result: ExternalArtifactRef | None     # adapter-only
 ```
 
 **Decision:** Results are immutable after construction. Large statevectors and raw
@@ -196,7 +197,7 @@ such as discarded shots is represented explicitly.
 
 ## Experiment manifest
 
-The proposed manifest records:
+The manifest records:
 
 | Section | Required content |
 |---|---|
@@ -234,11 +235,10 @@ delays under a fake clock, result fixture, cancellation behavior, and failure
 diagnostic. Tests must never sleep or depend on wall-clock scheduling.
 
 ```python
-# Proposed
 backend = MockBackend.scenario(
     target=Target.testing(qubits=5),
     states=[JobStatus.QUEUED, JobStatus.RUNNING, JobStatus.SUCCEEDED],
-    result=RunResult.testing(counts={"00": 5, "11": 5}),
+    result=RunResult(counts={"00": 5, "11": 5}),
 )
 ```
 
@@ -267,18 +267,21 @@ backend = MockBackend.scenario(
 
 ## Initial API specification
 
-All examples below are **Proposed** unless explicitly marked current. Future-scope
-examples demonstrate boundaries; they are not Phase 1 commitments.
+Implemented examples are labeled 0.3; future-scope examples demonstrate
+boundaries and are not commitments.
 
 ### Bell state: Phase 1
 
 ```python
-from qplanck import Circuit
+from qplanck import Circuit, CompileOptions, ExecutionOptions
 from qplanck.backends import LocalSimulator
 
 circuit = Circuit(2).h(0).cx(0, 1).measure_all()
 backend = LocalSimulator()
-compiled = circuit.compile(target=backend.target, trace=True)
+compiled = circuit.compile(
+    CompileOptions(optimization_level=2),
+    target=backend.target,
+)
 result = backend.run(compiled, options=ExecutionOptions(shots=1_000, seed=7))
 ```
 
@@ -286,11 +289,14 @@ result = backend.run(compiled, options=ExecutionOptions(shots=1_000, seed=7))
 
 ```python
 circuit = Circuit(4).h(0).cx(0, 1).cx(1, 2).cx(2, 3).measure_all()
-result = LocalSimulator().run(circuit.compile(), shots=2_000, seed=11)
+result = LocalSimulator().run(
+    circuit.compile(),
+    options=ExecutionOptions(shots=2_000, seed=11),
+)
 ```
 
-The direct `shots` and `seed` keywords are a proposed ergonomic shorthand for an
-`ExecutionOptions` instance.
+Runtime execution settings use an `ExecutionOptions` instance so their canonical
+identity and redaction behavior can enter the manifest.
 
 ### Grover search: Phase 2 library example
 
@@ -355,7 +361,7 @@ result = backend.run(circuit.compile(target=backend.target), shots=10_000, seed=
 
 Noise-model identity and serialization must be recorded in the manifest.
 
-### Hardware execution: future adapter
+### Hardware execution: future additional adapter
 
 ```python
 backend = IBMBackend.from_environment(target="ibm_example")
@@ -374,7 +380,7 @@ for event in compiled.trace.events:
     print(event.pass_id, event.metrics_before, event.metrics_after)
 ```
 
-### Pulse experiment: implemented local schema, future provider adapter
+### Pulse experiment: implemented local schema and Braket adapter subset
 
 ```python
 from qplanck.pulse import (
@@ -397,10 +403,12 @@ pulse_program = (
 pulse_program.validate(target)
 ```
 
-The local schedule/target/calibration contracts are implemented in `0.2.0a1`.
-Provider channel mapping, calibration/timing ownership, OpenPulse lowering, and
-hardware execution remain future adapter responsibilities. Pulse programs are
-not implicitly lowered from `CircuitIR`.
+The local schedule/target/calibration contracts are implemented in `0.3.0a1`.
+`qplanck-braket` explicitly maps captured provider frames, timing, and calibration
+identity for its documented subset. It rejects `Acquire`; ordinary circuit
+measurement performs acquisition. The adapter is offline tested, while a live
+hardware-execution claim and production provider release remain separately
+gated. Pulse programs are not implicitly lowered from `CircuitIR`.
 
 ## Verification
 
@@ -411,4 +419,5 @@ not implicitly lowered from `CircuitIR`.
 - Mock tests enumerate every job transition and failure state using a fake clock.
 - Adapter tests use recorded schemas/mocks and optional live smoke tests with strict
   spend and credential controls.
-- Manifest replay tests run across Python 3.11-3.13 and supported operating systems.
+- Manifest tests run across CPython 3.11-3.14 and supported operating systems;
+  the Braket adapter supports CPython 3.11-3.13.

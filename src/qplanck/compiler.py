@@ -1,8 +1,9 @@
-"""Deterministic graph-based compilation for QCore static circuits.
+"""Typed Python adapter for QCore's deterministic compiler contracts.
 
-The compiler in this module is a small, auditable Python reference pipeline.  It
-builds an immutable dependency graph, validates the input, applies conservative
-local rewrites, and records deterministic evidence for every executed pass.
+The required Rust kernel owns static validation, O0/O1/O2 compilation,
+canonical hashing, resource analysis, routing, basis lowering, and pass
+evidence. The Python algorithms remain available only through the explicit
+private ``_compile_reference`` differential/benchmark oracle.
 
 Rotation elision uses :attr:`CompileOptions.angle_tolerance` as an absolute
 zero tolerance after compatible rotations are summed. The default is ``0.0`` so
@@ -20,15 +21,19 @@ from collections import Counter
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from types import MappingProxyType
+from typing import Any
 
+from qplanck._native import compile_ir as _native_compile_ir
 from qplanck.circuit import Circuit
 from qplanck.errors import CircuitError
 from qplanck.ir import CircuitIR, MeasurementSpec, Operation, Parameter
+from qplanck.routing import RoutingTrace, route
+from qplanck.targets import Layout, Target
 
-_SELF_INVERSE_GATES = frozenset({"h", "x", "y", "z", "cx", "cz"})
+_SELF_INVERSE_GATES = frozenset({"h", "x", "y", "z", "cx", "cz", "swap"})
 _ROTATION_GATES = frozenset({"rx", "ry", "rz"})
-COMPILATION_TRACE_SCHEMA_VERSION = "qplanck.compilation.trace.v0.1"
-COMPILED_CIRCUIT_SCHEMA_VERSION = "qplanck.compiled.v0.1"
+COMPILATION_TRACE_SCHEMA_VERSION = "qplanck.compilation.trace.v0.2"
+COMPILED_CIRCUIT_SCHEMA_VERSION = "qplanck.compiled.v0.2"
 
 
 @dataclass(frozen=True)
@@ -37,16 +42,21 @@ class CompileOptions:
 
     Level ``0`` validates and analyzes without changing the circuit.  Level
     ``1`` additionally enables exact self-inverse cancellation and compatible
-    numeric rotation merging.  ``angle_tolerance`` only controls zero elision
-    after a merge; it does not make unlike rotations compatible.
+    numeric rotation merging. Level ``2`` adds deterministic target placement,
+    routing, and exact basis lowering. ``angle_tolerance`` only controls zero
+    elision after a merge; it does not make unlike rotations compatible.
     """
 
     optimization_level: int = 1
     angle_tolerance: float = 0.0
+    initial_layout: Layout | None = None
+    routing_seed: int = 0
+    placement_trials: int = 4
+    max_inserted_swaps: int | None = None
 
     def __post_init__(self) -> None:
-        if isinstance(self.optimization_level, bool) or self.optimization_level not in {0, 1}:
-            raise ValueError("optimization_level must be 0 or 1.")
+        if isinstance(self.optimization_level, bool) or self.optimization_level not in {0, 1, 2}:
+            raise ValueError("optimization_level must be 0, 1, or 2.")
         if isinstance(self.angle_tolerance, bool):
             raise ValueError("angle_tolerance must be a finite, non-negative number.")
         tolerance = float(self.angle_tolerance)
@@ -54,10 +64,44 @@ class CompileOptions:
             raise ValueError("angle_tolerance must be a finite, non-negative number.")
         object.__setattr__(self, "angle_tolerance", tolerance)
 
-    def to_dict(self) -> dict[str, int | float]:
+        if self.initial_layout is not None and not isinstance(self.initial_layout, Layout):
+            raise TypeError("initial_layout must be a Layout or None.")
+        if (
+            isinstance(self.routing_seed, bool)
+            or not isinstance(self.routing_seed, int)
+            or not 0 <= self.routing_seed < 2**64
+        ):
+            raise ValueError("routing_seed must be an unsigned 64-bit integer.")
+        if (
+            isinstance(self.placement_trials, bool)
+            or not isinstance(self.placement_trials, int)
+            or self.placement_trials < 1
+        ):
+            raise ValueError("placement_trials must be a positive integer.")
+        if self.max_inserted_swaps is not None and (
+            isinstance(self.max_inserted_swaps, bool)
+            or not isinstance(self.max_inserted_swaps, int)
+            or self.max_inserted_swaps < 0
+        ):
+            raise ValueError("max_inserted_swaps must be a non-negative integer or None.")
+        if self.optimization_level < 2 and (
+            self.initial_layout is not None
+            or self.routing_seed != 0
+            or self.placement_trials != 4
+            or self.max_inserted_swaps is not None
+        ):
+            raise ValueError("Routing options require optimization_level=2.")
+
+    def to_dict(self) -> dict[str, object]:
         return {
             "optimization_level": self.optimization_level,
             "angle_tolerance": self.angle_tolerance,
+            "initial_layout": (
+                None if self.initial_layout is None else self.initial_layout.to_dict()
+            ),
+            "routing_seed": self.routing_seed,
+            "placement_trials": self.placement_trials,
+            "max_inserted_swaps": self.max_inserted_swaps,
         }
 
 
@@ -368,6 +412,16 @@ class CompilationTrace:
     def to_json(self, *, indent: int | None = None) -> str:
         return json.dumps(self.to_dict(), indent=indent, sort_keys=True)
 
+    @property
+    def content_hash(self) -> str:
+        payload = json.dumps(
+            self.to_dict(),
+            allow_nan=False,
+            separators=(",", ":"),
+            sort_keys=True,
+        ).encode("utf-8")
+        return f"sha256:{hashlib.sha256(payload).hexdigest()}"
+
 
 @dataclass(frozen=True)
 class CompiledCircuit:
@@ -381,11 +435,35 @@ class CompiledCircuit:
     after_metrics: ResourceMetrics
     trace: CompilationTrace
     options: CompileOptions
+    target: Target | None = None
+    routed_ir: CircuitIR | None = None
+    routed_metrics: ResourceMetrics | None = None
+    initial_layout: Layout | None = None
+    final_layout: Layout | None = None
+    routing_trace: RoutingTrace | None = None
+    native_implementation: Mapping[str, str] = field(default_factory=dict)
     schema_version: str = COMPILED_CIRCUIT_SCHEMA_VERSION
 
     def __post_init__(self) -> None:
         if self.schema_version != COMPILED_CIRCUIT_SCHEMA_VERSION:
             raise ValueError(f"Unsupported compiled circuit schema: {self.schema_version}.")
+        object.__setattr__(
+            self,
+            "native_implementation",
+            MappingProxyType(dict(sorted(self.native_implementation.items()))),
+        )
+        routed_fields = (
+            self.target,
+            self.routed_ir,
+            self.routed_metrics,
+            self.initial_layout,
+            self.final_layout,
+            self.routing_trace,
+        )
+        if self.options.optimization_level == 2 and any(item is None for item in routed_fields):
+            raise ValueError("O2 compiled circuits require target, layout, and routing artifacts.")
+        if self.options.optimization_level < 2 and any(item is not None for item in routed_fields):
+            raise ValueError("O0/O1 compiled circuits cannot contain routing artifacts.")
 
     @property
     def compiled_ir(self) -> CircuitIR:
@@ -404,6 +482,10 @@ class CompiledCircuit:
         """Return metrics for the compiled IR."""
 
         return self.after_metrics
+
+    @property
+    def target_hash(self) -> str | None:
+        return None if self.target is None else self.target.content_hash
 
     @property
     def operations(self) -> tuple[Operation, ...]:
@@ -431,12 +513,38 @@ class CompiledCircuit:
             "compiled_graph": self.dependency_graph.to_dict(),
             "before_metrics": self.before_metrics.to_dict(),
             "after_metrics": self.after_metrics.to_dict(),
+            "routed_ir": None if self.routed_ir is None else self.routed_ir.to_dict(),
+            "routed_metrics": (
+                None if self.routed_metrics is None else self.routed_metrics.to_dict()
+            ),
+            "target": None if self.target is None else self.target.to_dict(),
+            "target_hash": self.target_hash,
+            "initial_layout": (
+                None if self.initial_layout is None else self.initial_layout.to_dict()
+            ),
+            "final_layout": None if self.final_layout is None else self.final_layout.to_dict(),
+            "routing_trace": (None if self.routing_trace is None else self.routing_trace.to_dict()),
+            "native_implementation": dict(self.native_implementation),
             "trace": self.trace.to_dict(),
             "options": self.options.to_dict(),
         }
 
     def to_json(self, *, indent: int | None = None) -> str:
         return json.dumps(self.to_dict(), indent=indent, sort_keys=True)
+
+    @property
+    def content_hash(self) -> str:
+        """Hash semantic compilation evidence, excluding native build identity."""
+
+        payload = self.to_dict()
+        payload.pop("native_implementation", None)
+        encoded = json.dumps(
+            payload,
+            allow_nan=False,
+            separators=(",", ":"),
+            sort_keys=True,
+        ).encode("utf-8")
+        return f"sha256:{hashlib.sha256(encoded).hexdigest()}"
 
 
 _VALIDATION_PASS = PassInfo(
@@ -451,6 +559,20 @@ _LOCAL_OPTIMIZATION_PASS = PassInfo(
     requires=frozenset({"static-validity/v1"}),
     provides=frozenset({"local-rewrite-provenance/v1"}),
     preserves=frozenset({"qubit-count", "measurements", "circuit-metadata"}),
+)
+_ROUTING_PASS = PassInfo(
+    id="route.target-deterministic",
+    version="1",
+    requires=frozenset({"static-validity/v1"}),
+    provides=frozenset({"physical-layout/v1", "routing-provenance/v1"}),
+    preserves=frozenset({"logical-semantics", "classical-bit-mapping"}),
+)
+_NATIVE_LOWERING_PASS = PassInfo(
+    id="lower.target-basis-exact",
+    version="1",
+    requires=frozenset({"physical-layout/v1"}),
+    provides=frozenset({"target-conformance/v1"}),
+    preserves=frozenset({"logical-semantics", "classical-bit-mapping"}),
 )
 _RESOURCE_ANALYSIS_PASS = PassInfo(
     id="analyze.resources",
@@ -642,21 +764,167 @@ def _coerce_ir(circuit_or_ir: Circuit | CircuitIR) -> CircuitIR:
     raise TypeError("compile() expects a qplanck.Circuit or qplanck.ir.CircuitIR.")
 
 
+def _graph_from_native(data: Mapping[str, Any]) -> DependencyGraph:
+    raw_edges = data.get("edges", [])
+    edges: list[tuple[int, int]] = []
+    for edge in raw_edges:
+        if not isinstance(edge, list) or len(edge) != 2:
+            raise ValueError("Native dependency edges must contain two operation indices.")
+        edges.append((int(edge[0]), int(edge[1])))
+    return DependencyGraph(
+        operation_count=int(data["operation_count"]),
+        edges=tuple(edges),
+    )
+
+
+def _metrics_from_native(data: Mapping[str, Any]) -> ResourceMetrics:
+    return ResourceMetrics(
+        qubit_count=int(data["qubit_count"]),
+        operation_count=int(data["operation_count"]),
+        measurement_count=int(data["measurement_count"]),
+        depth=int(data["depth"]),
+        single_qubit_gate_count=int(data["single_qubit_gate_count"]),
+        two_qubit_gate_count=int(data["two_qubit_gate_count"]),
+        gate_counts={str(key): int(value) for key, value in data["gate_counts"].items()},
+    )
+
+
+def _event_from_native(data: Mapping[str, Any]) -> CompilationEvent:
+    raw_pass = data["pass"]
+    pass_info = PassInfo(
+        id=str(raw_pass["id"]),
+        version=str(raw_pass["version"]),
+        requires=frozenset(str(item) for item in raw_pass.get("requires", [])),
+        provides=frozenset(str(item) for item in raw_pass.get("provides", [])),
+        preserves=frozenset(str(item) for item in raw_pass.get("preserves", [])),
+        deterministic=bool(raw_pass.get("deterministic", True)),
+    )
+    rewrites = tuple(
+        RewriteEvidence(
+            rule=str(item["rule"]),
+            source_indices=tuple(int(index) for index in item["source_indices"]),
+            before=tuple(Operation.from_dict(operation) for operation in item["before"]),
+            after=tuple(Operation.from_dict(operation) for operation in item["after"]),
+        )
+        for item in data.get("rewrites", [])
+    )
+    return CompilationEvent(
+        index=int(data["index"]),
+        pass_info=pass_info,
+        input_ir_hash=str(data["input_ir_hash"]),
+        output_ir_hash=str(data["output_ir_hash"]),
+        changed=bool(data["changed"]),
+        metrics_before=_metrics_from_native(data["metrics_before"]),
+        metrics_after=_metrics_from_native(data["metrics_after"]),
+        rewrites=rewrites,
+        message=str(data.get("message", "")),
+    )
+
+
+def _compile_native(
+    source_ir: CircuitIR,
+    options: CompileOptions,
+    target: Target | None,
+) -> CompiledCircuit:
+    try:
+        ir_json = source_ir.to_json()
+    except (TypeError, ValueError) as error:
+        raise CircuitError("Circuit IR metadata must be JSON-serializable.") from error
+    response = _native_compile_ir(
+        ir_json,
+        options.to_dict(),
+        target=None if target is None else target.to_dict(),
+    )
+    parsed_ir = CircuitIR.from_dict(response["compiled_ir"])
+    compiled_ir = source_ir if parsed_ir.to_dict() == source_ir.to_dict() else parsed_ir
+    events = tuple(_event_from_native(item) for item in response["events"])
+    trace = CompilationTrace(
+        pipeline_id=str(response["pipeline_id"]),
+        input_ir_hash=str(response["input_ir_hash"]),
+        output_ir_hash=str(response["output_ir_hash"]),
+        events=events,
+    )
+    implementation = response.get("implementation", {})
+    routed_payload = response.get("routed_ir")
+    routed_metrics_payload = response.get("routed_metrics")
+    initial_layout_payload = response.get("initial_layout")
+    final_layout_payload = response.get("final_layout")
+    routing_trace_payload = response.get("routing_trace")
+    return CompiledCircuit(
+        source_ir=source_ir,
+        ir=compiled_ir,
+        source_graph=_graph_from_native(response["source_graph"]),
+        dependency_graph=_graph_from_native(response["compiled_graph"]),
+        before_metrics=_metrics_from_native(response["before_metrics"]),
+        after_metrics=_metrics_from_native(response["after_metrics"]),
+        trace=trace,
+        options=options,
+        target=target,
+        routed_ir=(None if routed_payload is None else CircuitIR.from_dict(routed_payload)),
+        routed_metrics=(
+            None if routed_metrics_payload is None else _metrics_from_native(routed_metrics_payload)
+        ),
+        initial_layout=(
+            None
+            if initial_layout_payload is None
+            else Layout(tuple(initial_layout_payload["logical_to_physical"]))
+        ),
+        final_layout=(
+            None
+            if final_layout_payload is None
+            else Layout(tuple(final_layout_payload["logical_to_physical"]))
+        ),
+        routing_trace=(
+            None if routing_trace_payload is None else RoutingTrace.from_dict(routing_trace_payload)
+        ),
+        native_implementation={str(key): str(value) for key, value in implementation.items()},
+    )
+
+
 def compile(
     circuit_or_ir: Circuit | CircuitIR,
     options: CompileOptions | None = None,
+    *,
+    target: Target | None = None,
 ) -> CompiledCircuit:
-    """Compile a circuit with the deterministic ``default-o0``/``default-o1`` pipeline.
+    """Compile a circuit with the deterministic O0/O1/O2 pipeline.
 
     The input is never mutated.  Measurements and circuit metadata are copied to
     the output IR unchanged.  Annotated operations are rewritten only when both
     candidates carry equal metadata, preventing a merge from silently choosing
-    between different annotations.
+    between different annotations. O2 requires an explicit immutable target.
     """
 
     compile_options = CompileOptions() if options is None else options
     if not isinstance(compile_options, CompileOptions):
         raise TypeError("options must be a CompileOptions instance.")
+    if target is not None and not isinstance(target, Target):
+        raise TypeError("target must be a Target or None.")
+    if compile_options.optimization_level == 2 and target is None:
+        raise ValueError("optimization_level=2 requires a target.")
+    if compile_options.optimization_level < 2 and target is not None:
+        raise ValueError("A target is accepted only with optimization_level=2.")
+    source_ir = _coerce_ir(circuit_or_ir)
+    return _compile_native(source_ir, compile_options, target)
+
+
+def _compile_reference(
+    circuit_or_ir: Circuit | CircuitIR,
+    options: CompileOptions | None = None,
+    *,
+    target: Target | None = None,
+) -> CompiledCircuit:
+    """Run the frozen Python oracle without touching the production native path."""
+
+    compile_options = CompileOptions() if options is None else options
+    if not isinstance(compile_options, CompileOptions):
+        raise TypeError("options must be a CompileOptions instance.")
+    if target is not None and not isinstance(target, Target):
+        raise TypeError("target must be a Target or None.")
+    if compile_options.optimization_level == 2 and target is None:
+        raise ValueError("optimization_level=2 requires a target.")
+    if compile_options.optimization_level < 2 and target is not None:
+        raise ValueError("A target is accepted only with optimization_level=2.")
     source_ir = _coerce_ir(circuit_or_ir)
     _validate_ir(source_ir)
 
@@ -677,7 +945,7 @@ def compile(
     ]
 
     compiled_ir = source_ir
-    if compile_options.optimization_level == 1:
+    if compile_options.optimization_level >= 1:
         optimized_ir, rewrites = _optimize_local(source_ir, compile_options)
         optimized_graph = DependencyGraph.from_ir(optimized_ir)
         optimized_metrics = ResourceMetrics.from_ir(optimized_ir, optimized_graph)
@@ -696,6 +964,66 @@ def compile(
             )
         )
         compiled_ir = optimized_ir
+
+    routed_ir: CircuitIR | None = None
+    routed_metrics: ResourceMetrics | None = None
+    initial_layout: Layout | None = None
+    final_layout: Layout | None = None
+    routing_trace: RoutingTrace | None = None
+    if compile_options.optimization_level == 2:
+        if target is None:  # pragma: no cover - narrowed above for type checkers
+            raise RuntimeError("O2 target validation was bypassed.")
+        pre_route_graph = DependencyGraph.from_ir(compiled_ir)
+        pre_route_metrics = ResourceMetrics.from_ir(compiled_ir, pre_route_graph)
+        pre_route_hash = _ir_hash(compiled_ir)
+        routing_result = route(
+            compiled_ir,
+            target,
+            initial_layout=compile_options.initial_layout,
+            routing_seed=compile_options.routing_seed,
+            placement_trials=compile_options.placement_trials,
+            max_inserted_swaps=compile_options.max_inserted_swaps,
+        )
+        routed_ir = routing_result.routed_ir
+        routed_graph = DependencyGraph.from_ir(routed_ir)
+        routed_metrics = ResourceMetrics.from_ir(routed_ir, routed_graph)
+        routed_hash = _ir_hash(routed_ir)
+        events.append(
+            CompilationEvent(
+                index=len(events),
+                pass_info=_ROUTING_PASS,
+                input_ir_hash=pre_route_hash,
+                output_ir_hash=routed_hash,
+                changed=routed_hash != pre_route_hash,
+                metrics_before=pre_route_metrics,
+                metrics_after=routed_metrics,
+                message=(
+                    f"Selected deterministic routing trial with "
+                    f"{len(routing_result.trace.steps)} inserted SWAP(s)."
+                ),
+            )
+        )
+
+        final_ir = routing_result.final_ir
+        final_graph = DependencyGraph.from_ir(final_ir)
+        final_metrics = ResourceMetrics.from_ir(final_ir, final_graph)
+        final_hash = _ir_hash(final_ir)
+        events.append(
+            CompilationEvent(
+                index=len(events),
+                pass_info=_NATIVE_LOWERING_PASS,
+                input_ir_hash=routed_hash,
+                output_ir_hash=final_hash,
+                changed=final_hash != routed_hash,
+                metrics_before=routed_metrics,
+                metrics_after=final_metrics,
+                message="Lowered routed operations exactly into the target instruction basis.",
+            )
+        )
+        compiled_ir = final_ir
+        initial_layout = routing_result.initial_layout
+        final_layout = routing_result.final_layout
+        routing_trace = routing_result.trace
 
     dependency_graph = DependencyGraph.from_ir(compiled_ir)
     after_metrics = ResourceMetrics.from_ir(compiled_ir, dependency_graph)
@@ -728,6 +1056,12 @@ def compile(
         after_metrics=after_metrics,
         trace=trace,
         options=compile_options,
+        target=target,
+        routed_ir=routed_ir,
+        routed_metrics=routed_metrics,
+        initial_layout=initial_layout,
+        final_layout=final_layout,
+        routing_trace=routing_trace,
     )
 
 

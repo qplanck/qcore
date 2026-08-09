@@ -1,7 +1,15 @@
 # QCore Phase 0 Executive Summary
 
-> Status: Proposed for milestone review  
+> Status: Phase 0 research retained; 0.3 implementation update below
 > Evidence cut-off: 2026-07-14
+
+**0.3 implementation update:** RFCs 0005 and 0006 supersede the earlier native
+deferral and Pyodide-first delivery assumption. Production compilation, target
+routing, and QIR lowering now require a Rust/PyO3 kernel; runtime/job contracts
+are implemented in core; and Amazon Braket pulse support is isolated in the
+`qplanck-braket` distribution. Static Labs must remain on the final pure-Python
+0.2 artifact or use a remote CPython kernel. Native speed superiority and live
+provider execution remain evidence-gated claims.
 
 ## Recommendation
 

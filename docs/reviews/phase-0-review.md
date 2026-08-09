@@ -2,8 +2,9 @@
 
 **Historical note:** this review records the pre-implementation Phase 0 baseline
 at commit `2f2ed07`. It is intentionally not a description of the current SDK.
-See the [current standards contract](../sdk-standards.md) for implemented
-`0.2.0a1` capabilities and limits.
+See the [current standards contract](../sdk-standards.md) for the implemented
+`0.3.0a1` release-candidate boundary. RFCs 0005 and 0006 supersede this review's
+native, browser, routing, and provider deferrals.
 
 > Milestone: Research and Architecture Gate  
 > Review status: **Ready for human review; not accepted**  

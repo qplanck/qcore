@@ -9,32 +9,145 @@ permissions:
   contents: read
 
 jobs:
-  build:
-    name: Build and verify distribution
+  verify:
+    name: Verify source tree
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
+      - uses: dtolnay/rust-toolchain@1.85.0
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
       - name: Install verification and build tools
-        run: python -m pip install --upgrade ".[dev,qir-validation]" build twine
+        run: python -m pip install --upgrade ".[dev,qir-validation]" twine
       - name: Verify source tree
         run: |
           ruff check .
           ruff format --check .
           mypy src/qplanck
           pytest
-      - name: Build wheel and source distribution
-        run: python -m build
-      - name: Check package metadata and description
-        run: python -m twine check --strict dist/*
-      - name: Smoke-test the built wheel
+          cargo fmt --all --check
+          cargo clippy --locked --all-targets --all-features -- -D warnings
+          cargo test --locked --all-features
+          cargo check --locked --no-default-features
+      - name: Verify native dependencies and licenses
+        uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          rust-version: "1.85.0"
+          command: check advisories bans licenses sources
+          arguments: --all-features
+      - name: Verify Python runtime dependencies
+        run: |
+          python -m pip install pip-audit==2.10.1
+          python -m pip check
+          python tools/check_python_runtime.py
+          python -c "from importlib.metadata import version; print('numpy==' + version('numpy'))" > "$RUNNER_TEMP/qplanck-runtime.txt"
+          python -m pip_audit --strict --requirement "$RUNNER_TEMP/qplanck-runtime.txt"
+
+  wheels:
+    name: Wheel / ${{ matrix.platform }} / ${{ matrix.target }}
+    needs: verify
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux-manylinux
+            os: ubuntu-latest
+            target: x86_64
+            manylinux: auto
+          - platform: linux-manylinux
+            os: ubuntu-latest
+            target: aarch64
+            manylinux: auto
+          - platform: linux-musllinux
+            os: ubuntu-latest
+            target: x86_64-unknown-linux-musl
+            manylinux: musllinux_1_2
+          - platform: linux-musllinux
+            os: ubuntu-latest
+            target: aarch64-unknown-linux-musl
+            manylinux: musllinux_1_2
+          - platform: macos
+            os: macos-13
+            target: x86_64
+            manylinux: "off"
+          - platform: macos
+            os: macos-14
+            target: aarch64
+            manylinux: "off"
+          - platform: windows
+            os: windows-latest
+            target: x64
+            manylinux: "off"
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: PyO3/maturin-action@v1
+        with:
+          command: build
+          maturin-version: v1.8.2
+          rust-toolchain: 1.85.0
+          target: ${{ matrix.target }}
+          manylinux: ${{ matrix.manylinux }}
+          args: --release --locked --out dist
+      - name: Upload wheel artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheel-${{ matrix.platform }}-${{ matrix.target }}
+          path: dist/*.whl
+          if-no-files-found: error
+
+  sdist:
+    name: Source distribution
+    needs: verify
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - uses: dtolnay/rust-toolchain@1.85.0
+      - name: Build sdist
+        run: |
+          python -m pip install --upgrade maturin==1.8.2
+          maturin sdist --out dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: source-distribution
+          path: dist/*.tar.gz
+          if-no-files-found: error
+
+  package-check:
+    name: Package metadata and wheel execution
+    needs: [wheels, sdist]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: "wheel-*"
+          path: dist
+          merge-multiple: true
+      - uses: actions/download-artifact@v4
+        with:
+          name: source-distribution
+          path: dist
+      - name: Check package metadata
+        run: |
+          python -m pip install --upgrade twine
+          python -m twine check --strict dist/*
+      - name: Smoke-test the manylinux x86_64 wheel
         run: |
           python -m venv "$RUNNER_TEMP/wheel-test"
-          "$RUNNER_TEMP/wheel-test/bin/pip" install dist/*.whl
+          "$RUNNER_TEMP/wheel-test/bin/pip" install dist/*manylinux*x86_64.whl
           "$RUNNER_TEMP/wheel-test/bin/qplanck" doctor
-      - name: Upload immutable distribution artifact
+          "$RUNNER_TEMP/wheel-test/bin/python" -c "from qplanck import Circuit; Circuit(2).h(0).cx(0, 1).compile()"
+      - name: Upload immutable distribution set
         uses: actions/upload-artifact@v4
         with:
           name: python-package-distributions
@@ -44,7 +157,7 @@ jobs:
   publish-testpypi:
     name: Publish to TestPyPI
     if: github.event_name == 'workflow_dispatch'
-    needs: build
+    needs: package-check
     runs-on: ubuntu-latest
     environment:
       name: testpypi
@@ -64,7 +177,7 @@ jobs:
   publish-pypi:
     name: Publish to PyPI
     if: github.event_name == 'release'
-    needs: build
+    needs: package-check
     runs-on: ubuntu-latest
     environment:
       name: pypi

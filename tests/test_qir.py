@@ -3,6 +3,7 @@ import math
 import pytest
 
 from qplanck import Circuit
+from qplanck.compiler import CompileOptions
 from qplanck.ir import CircuitIR, MeasurementSpec, Operation, Parameter
 from qplanck.qir import (
     QIRCapabilities,
@@ -13,6 +14,7 @@ from qplanck.qir import (
     export_qir_with_report,
     validate_capabilities,
 )
+from qplanck.targets import Layout, Target, Topology
 
 
 def test_base_profile_export_is_deterministic_and_complete() -> None:
@@ -131,14 +133,6 @@ def test_capability_validation_rejects_missing_qis_and_resource_limits() -> None
     [
         (
             CircuitIR(
-                2,
-                operations=(Operation("swap", (0, 1)),),
-                measurements=(MeasurementSpec(0, 0),),
-            ),
-            "unsupported gate 'swap'",
-        ),
-        (
-            CircuitIR(
                 1,
                 operations=(Operation("rx", (0,), (Parameter("theta"),)),),
                 measurements=(MeasurementSpec(0, 0),),
@@ -174,6 +168,52 @@ def test_export_rejects_invalid_entry_point_and_profile() -> None:
 
     with pytest.raises(QIRExportError, match="Unsupported QIR profile"):
         export_qir(circuit, profile="adaptive_profile")
+
+
+def test_swap_lowers_to_three_cnot_calls_with_one_source_origin() -> None:
+    module = export_qir(Circuit(2).swap(0, 1).measure_all())
+
+    assert module.text.count("call void @__quantum__qis__cnot__body") == 3
+    swap_entries = [item for item in module.manifest.source_map if item.source_operation == "swap"]
+    assert [item.qubits for item in swap_entries] == [(0, 1), (1, 0), (0, 1)]
+    assert {item.source_index for item in swap_entries} == {0}
+
+
+def test_compiled_export_links_native_compiler_and_target_provenance() -> None:
+    target = Target.testing(
+        3,
+        topology=Topology.line(3),
+        basis_gates=frozenset({"h", "cx"}),
+        target_id="qir-provenance",
+    )
+    compiled = (
+        Circuit(3)
+        .h(0)
+        .cx(0, 2)
+        .measure_all()
+        .compile(
+            CompileOptions(optimization_level=2, initial_layout=Layout.identity(3)),
+            target=target,
+        )
+    )
+
+    module = export_qir(compiled)
+
+    assert module.manifest.target_hash == target.content_hash
+    assert module.manifest.source_ir_hash == compiled.trace.input_ir_hash
+    assert module.manifest.compiled_ir_hash == compiled.trace.output_ir_hash
+    assert module.manifest.compiled_artifact_hash == compiled.content_hash
+    assert module.manifest.compiler_trace_hash == compiled.trace.content_hash
+    assert module.manifest.compiler_trace_schema == compiled.trace.schema_version
+    assert module.manifest.routing_trace_hash is not None
+    assert module.manifest.routing_trace_schema == compiled.routing_trace.schema_version
+    routing_entries = [
+        item for item in module.manifest.compiler_map if item.origin_kind == "routing-step"
+    ]
+    assert len(routing_entries) == len(compiled.routing_trace.steps)
+    assert routing_entries[0].qir_call_indices
+    assert module.manifest.to_dict()["target_hash"] == target.content_hash
+    assert module.native_implementation["name"] == "qplanck-native"
 
 
 def test_measurement_free_circuit_has_zero_static_results() -> None:

@@ -1,4 +1,5 @@
 .coverage
+.DS_Store
 .hypothesis/
 .mypy_cache/
 .pytest_cache/
@@ -9,4 +10,7 @@ __pycache__/
 build/
 dist/
 htmlcov/
+target/
+src/qplanck/_qplanck_native*.so
+src/qplanck/_qplanck_native*.pyd
 trace.json

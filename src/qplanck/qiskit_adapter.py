@@ -52,7 +52,14 @@ def to_qiskit(circuit: Circuit) -> Any:
     classical_count = 0
     if circuit.measurements:
         classical_count = max(measurement.cbit for measurement in circuit.measurements) + 1
-    quantum_circuit = qiskit.QuantumCircuit(circuit.qubit_count, classical_count, name=circuit.name)
+    # Qiskit generates a process-global ``circuit-N`` name for ``None``. Use an
+    # empty name so an unnamed QCore circuit round-trips without acquiring
+    # nondeterministic metadata.
+    quantum_circuit = qiskit.QuantumCircuit(
+        circuit.qubit_count,
+        classical_count,
+        name=circuit.name or "",
+    )
 
     for operation in circuit.operations:
         name = operation.name
@@ -64,6 +71,8 @@ def to_qiskit(circuit: Circuit) -> Any:
             quantum_circuit.cx(operation.qubits[0], operation.qubits[1])
         elif name == "cz":
             quantum_circuit.cz(operation.qubits[0], operation.qubits[1])
+        elif name == "swap":
+            quantum_circuit.swap(operation.qubits[0], operation.qubits[1])
         else:
             raise InteropError(f"Unsupported QCore operation {name!r}.")
 
@@ -174,6 +183,8 @@ def _add_supported_gate(
         circuit.cx(qubits[0], qubits[1])
     elif name == "cz":
         circuit.cz(qubits[0], qubits[1])
+    elif name == "swap":
+        circuit.swap(qubits[0], qubits[1])
     else:
         raise InteropError(f"Unsupported Qiskit operation {name!r}.")
 

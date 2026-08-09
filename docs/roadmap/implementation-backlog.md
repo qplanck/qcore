@@ -4,6 +4,10 @@
 > Scope: Exact backlog for the first 90-day programme  
 > Owners: Unassigned pending Phase 0 review
 
+> 0.3 note: this is the retained Phase 1 backlog. RFCs 0005 and 0006 supersede
+> its Python-only compiler, Pyodide-first Labs, and provider deferrals. See the
+> [current roadmap](qcore-roadmap.md) and [claim matrix](../claims.md).
+
 ## Conventions
 
 - Priority `P0` blocks the MVP; `P1` is required before Phase 1 review but may run

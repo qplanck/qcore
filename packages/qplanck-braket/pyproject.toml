@@ -1,0 +1,77 @@
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[project]
+name = "qplanck-braket"
+version = "0.1.0a1"
+description = "Amazon Braket pulse execution adapter for QPlanck."
+readme = "README.md"
+requires-python = ">=3.11,<3.14"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+authors = [{ name = "QPlanck Labs" }]
+keywords = ["quantum", "amazon-braket", "pulse", "openpulse", "qplanck"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "Intended Audience :: Science/Research",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Scientific/Engineering",
+  "Typing :: Typed",
+]
+dependencies = [
+  "qplanck>=0.3.0a1,<0.4",
+  "amazon-braket-sdk>=1.124,<1.125",
+]
+
+[project.optional-dependencies]
+dev = [
+  "build>=1.2",
+  "mypy>=1.10",
+  "pytest>=8.0",
+  "ruff>=0.5",
+  "twine>=5.1",
+]
+
+[project.urls]
+Homepage = "https://github.com/qplanck/qcore"
+Documentation = "https://github.com/qplanck/qcore/tree/main/packages/qplanck-braket"
+Issues = "https://github.com/qplanck/qcore/issues"
+Source = "https://github.com/qplanck/qcore"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/qplanck_braket"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src", "../../src"]
+addopts = "-ra"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+ignore = ["E501"]
+
+[tool.mypy]
+python_version = "3.11"
+packages = ["qplanck_braket"]
+mypy_path = "../../src"
+warn_unused_configs = true
+disallow_untyped_defs = true
+no_implicit_optional = true
+show_error_codes = true
+
+[[tool.mypy.overrides]]
+module = ["boto3", "boto3.*", "braket", "braket.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["qplanck", "qplanck.*"]
+follow_imports = "skip"

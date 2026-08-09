@@ -47,6 +47,10 @@ def CZ(control: int, target: int) -> Operation:
     return Operation("cz", (control, target))
 
 
+def SWAP(left: int, right: int) -> Operation:
+    return Operation("swap", (left, right))
+
+
 h = H
 x = X
 y = Y
@@ -58,3 +62,4 @@ ry = RY
 rz = RZ
 cx = CX
 cz = CZ
+swap = SWAP

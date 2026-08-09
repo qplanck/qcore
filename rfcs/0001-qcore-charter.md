@@ -1,9 +1,8 @@
 # RFC 0001: QCore Charter
 
-> Implementation note (`0.2.0a1`): QCore now includes an experimental local
-> pulse/calibration *representation*. Pulse hardware control, provider drivers,
-> credentials, and job submission remain non-goals, so this does not broaden the
-> runtime scope described below.
+> Implementation note (`0.3.0a1`): the bounded compiler/runtime foundation is
+> implemented in core. RFC 0006 permits a separately distributed, evidence-gated
+> provider adapter without moving credentials or provider SDKs into core.
 
 - Status: **Proposed**
 - Date: 2026-07-14
@@ -140,5 +139,5 @@ reporting, and an explicit trademark policy govern the project, subject to
 
 ## Acceptance record
 
-Pending. This RFC remains **Proposed** until the Phase 0 milestone review records
-approvers, date, dissent, and assigned follow-up owners.
+Pending Phase 0 milestone review. RFC 0006 permits an evidence-gated provider
+adapter without changing this charter's core credential boundary.

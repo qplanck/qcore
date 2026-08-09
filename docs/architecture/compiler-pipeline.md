@@ -1,13 +1,16 @@
 # Compiler Pipeline
 
-**Implementation update (`0.2.0a1`):** the reference compiler now implements an
-immutable dependency graph, validation, O0/O1 pipelines, exact self-inverse
-cancellation, numeric rotation merging, resource metrics, IR identities, and
-deterministic compilation events. Placement, routing/SWAP insertion,
-decomposition, scheduling, target lowering, and native acceleration remain
-future work. See the [current architecture](../architecture.md).
+**Implementation update (`0.3.0a1`):** a required Rust kernel implements the
+immutable dependency graph, validation, O0/O1 exact optimization, resource
+metrics, canonical identities, deterministic events, and QIR lowering. O2 adds
+deterministic target-aware placement, routing/SWAP insertion, exact native-basis
+lowering, and terminal-measurement remapping. The prior Python O0/O1 path is a
+frozen correctness/benchmark oracle, not a production fallback. Scheduling and
+approximate synthesis remain future work. See the
+[current architecture](../architecture.md) and
+[accepted native compiler RFC](../../rfcs/0005-native-target-compiler.md).
 
-> Status: Proposed  
+> Status: Implemented alpha contract; later-stage pass framework remains proposed
 > Evidence basis: Qiskit, pytket, LLVM/MLIR, Catalyst, CUDA-Q, and PyZX sources in
 > the [source register](../research/source-register.md)
 
@@ -40,37 +43,37 @@ flowchart LR
     TV -. events .-> T
 ```
 
-**Decision:** Phase 1 implements the full stage skeleton but only the passes whose
-scope is marked `P1` below. Empty stages still appear in the pipeline identity so
-future additions do not silently reorder existing work.
+**Decision:** The native 0.3 pipeline implements the passes marked `0.3` below.
+Empty/future stages retain stable identities so later additions cannot silently
+reorder existing work.
 
 ## Pass catalogue and staging
 
 | Stage | Pass or analysis | Scope | Dependencies | Preserves / invalidates |
 |---|---|---|---|---|
 | Parse/import | OpenQASM/adaptor parse | Existing edge | Input grammar/version | Produces source map; outside compiler proper |
-| Structural validation | Schema, IDs, bounds, arity, finite values | **P1** | None | Preserves all; emits diagnostics |
-| Semantic validation | Terminal measurement and feature checks | **P1** | Structural validity | Preserves all; emits capability needs |
+| Structural validation | Schema, IDs, bounds, arity, finite values | **0.3** | None | Preserves all; emits diagnostics |
+| Semantic validation | Terminal measurement and feature checks | **0.3** | Structural validity | Preserves all; emits capability needs |
 | Type checking | Classical/symbolic expression types | Future | Structured IR | Preserves structure; may provide type map |
-| Canonicalization | Gate/parameter/name normalization | **P1** | Structural validity | Invalidates semantic hash, operation counts |
+| Canonicalization | Gate/parameter/name normalization | **0.3** | Structural validity | Invalidates semantic hash, operation counts |
 | Constant folding | Symbolic/classical evaluation | Future | Type map | Invalidates expression/use analyses |
 | Dead-operation elimination | Remove provably irrelevant operations | Phase 2 | Liveness/measurement cone | Invalidates depth, counts, liveness |
-| Inverse cancellation | Adjacent safe inverse pairs | **P1** | Gate semantics | Invalidates depth, counts; preserves topology needs |
-| Rotation merging | Adjacent compatible rotations with numeric angles | **P1** | Gate semantics, commutation boundary | Invalidates depth/counts; preserves qubit set |
+| Inverse cancellation | Adjacent safe inverse pairs | **0.3** | Gate semantics | Invalidates depth, counts; preserves topology needs |
+| Rotation merging | Adjacent compatible rotations with numeric angles | **0.3** | Gate semantics, commutation boundary | Invalidates depth/counts; preserves qubit set |
 | Commutation analysis | Establish safe local reorder relations | Phase 2 analysis | Gate semantics | Analysis only |
 | Measurement deferral | Transform only when equivalence is proven | Future | Control/dataflow proof | Invalidates control/liveness; high-risk opt-in |
-| Decomposition | Expand unsupported gates into target basis | Phase 2 | Target gate set, synthesis registry | Invalidates depth/counts/commutation |
+| Exact decomposition | Expand supported gates/SWAP into an exact target basis | **0.3** | Target gate set, exact registry | Invalidates depth/counts/commutation |
 | Gate synthesis | Approximate/construct target operations | Future/integrated | Tolerance, target, algorithm identity | Invalidates numeric error/resource metrics |
 | Qubit reuse | Recycle qubits after proven lifetime end | Future | Liveness/control flow | Invalidates mapping and all topology analyses |
 | Ancilla management | Allocate/release clean/dirty ancillas | Future | Synthesis and liveness contracts | Invalidates qubit set, mapping, depth |
-| Placement | Logical-to-physical initial map | Phase 2 | Target topology, interaction graph | Provides layout; invalidates physical depth |
-| Routing/SWAP insertion | Satisfy connectivity | Phase 2 | Layout, topology | Invalidates depth/counts/layout details |
-| Native lowering | Rebase into target gates | Phase 2 | Target, decomposition registry | Invalidates operation metrics |
+| Placement | Logical-to-physical initial map | **0.3** | Target topology, interaction graph | Provides layout; invalidates physical depth |
+| Routing/SWAP insertion | Satisfy connectivity | **0.3** | Layout, topology | Invalidates depth/counts/layout details |
+| Native lowering | Rebase into target gates | **0.3** | Target, exact decomposition registry | Invalidates operation metrics |
 | Scheduling | Assign start/duration under timing constraints | Future | Durations, dependencies, target timing | Produces schedule; invalidates on structural change |
 | Noise-aware optimization | Optimize estimated objective | Future research | Calibrations/noise snapshot | Potentially nondeterministic; must record objective/snapshot |
-| Resource estimation | Counts, depth, two-qubit gates, estimated memory | **P1 analysis** | Canonical IR; target optional | Analysis only |
-| Target validation | Supported features, gate set, limits | **P1** | Immutable `Target` | Preserves all; blocks execution on error |
-| Pulse lowering | Circuit to calibrated schedule | Future adapter | Calibration ownership/profile | Separate program type; not a CircuitIR mutation |
+| Resource estimation | Counts, depth, two-qubit gates, estimated memory | **0.3 analysis** | Canonical/routed IR; target optional | Analysis only |
+| Target validation | Supported features, gate set, limits | **0.3** | Immutable `Target` | Preserves all; blocks execution on error |
+| Pulse lowering | Calibrated circuit to Braket pulse sequence | **0.3 separate adapter subset** | Calibration/snapshot ownership | Separate program type; not a CircuitIR mutation |
 | Result post-processing | Provider/result normalization | Runtime, not compiler | Backend result contract | Outside compiler trace |
 
 ## Proposed pass interfaces
@@ -146,9 +149,9 @@ A pipeline is canonical data, not arbitrary callbacks:
 
 | Level | Contract | Phase 1 |
 |---|---|---|
-| `0` | Validate, canonicalize representation, collect metrics; no semantic optimization | Implement |
-| `1` | Add local exact rewrites with cheap deterministic proofs | Default and implement |
-| `2` | Add target-aware decomposition and routing with deterministic heuristics | Reserve for Phase 2 |
+| `0` | Validate, canonicalize representation, collect metrics; no semantic optimization | Implemented native |
+| `1` | Add local exact rewrites with cheap deterministic proofs | Implemented native and default |
+| `2` | Add target-aware exact lowering and routing with deterministic heuristics | Implemented native; target required |
 | `3` | Potentially expensive search/synthesis under explicit time/error budget | Future, opt-in |
 
 **Decision:** Levels are documented pipeline aliases, not vague quality promises.
@@ -210,7 +213,7 @@ event includes:
 4. Reject dependence on wall clock, process ID, object hash randomization, or
    unordered plugin discovery.
 5. Define floating-point normalization and tolerances per pass.
-6. Run deterministic fixtures across Python 3.11-3.13 and all CI operating systems.
+6. Run deterministic fixtures across CPython 3.11-3.14 and all CI operating systems.
 
 **Open Question:** Some future synthesis/search algorithms may benefit from
 nondeterminism. They must be explicitly experimental and cannot participate in the
@@ -240,10 +243,10 @@ resource limits, no inherited credentials, and output revalidation.
 
 ## Language allocation
 
-| Component | Phase 1 language | Reason | Native trigger |
+| Component | 0.3 language | Reason | Boundary |
 |---|---|---|---|
-| Contracts, passes, runtime | Python | Existing package, accessibility, iteration, typed dataclasses | Published profile shows an unfixable material bottleneck |
-| Reference simulation | Python + NumPy | Auditable matrix semantics and available browser NumPy | Never rewrite merely for speed; add adapter first |
-| Browser execution | Python in Pyodide/Wasm | Reuses package and notebooks | Missing required package/latency within defined lab workload |
-| Advanced compiler/native simulator | External adapters | Mature ecosystems already exist | Accepted ownership and benchmark case |
-| Future QIR/MLIR integration | Likely native bindings plus Python facade | Ecosystem toolchains are native | Dynamic/multi-level feature gate accepted |
+| Public contracts, runtime, providers | Python | Typed dataclasses, accessible API, separate adapter lifecycle | Python never performs production compile/QIR work |
+| Graph compiler, routing, QIR | Rust via PyO3 `abi3-py311` | Required deterministic performance kernel | Panics become `NativeCompilerError`; no Python fallback |
+| Reference simulator | Python + NumPy | Auditable matrix semantics | Local correctness backend, not a provider QPU claim |
+| Frozen compiler oracle | Python | Differential correctness and benchmark baseline | Non-production and never selected automatically |
+| Browser execution | Remote CPython or final 0.2 artifact | Native 0.3 wheels cannot execute in Pyodide/Wasm | No 0.3 WebAssembly support |

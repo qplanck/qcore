@@ -34,6 +34,15 @@ def test_qasm3_assignment_measurements_and_pi_params() -> None:
     assert circuit.measurements[0].cbit == 0
 
 
+def test_qasm3_swap_round_trip() -> None:
+    circuit = Circuit(2).x(0).swap(0, 1)
+
+    qasm = circuit.to_qasm3()
+
+    assert "swap q[0], q[1];" in qasm
+    assert Circuit.from_qasm3(qasm).to_dict() == circuit.to_dict()
+
+
 def test_qasm3_rejects_unsupported_operations() -> None:
     qasm = """
     OPENQASM 3.0;

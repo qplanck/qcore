@@ -1,0 +1,4 @@
+# Publication benchmark environment, refreshed for the 2026-08-09 planner dry run.
+pyperf==2.10.0
+qiskit==2.5.1
+cirq-core==1.7.0

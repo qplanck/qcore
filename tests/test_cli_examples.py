@@ -9,6 +9,7 @@ def test_cli_doctor(capsys) -> None:
     assert "QCore doctor" in captured.out
     assert "trace: ok" in captured.out
     assert "compiler: qplanck.default-o1.v1" in captured.out
+    assert "native kernel: qplanck-native 0.3.0-alpha.1" in captured.out
     assert "qir: 2.0 base_profile" in captured.out
     assert "pulse schema: qplanck.pulse.v0.1" in captured.out
 
